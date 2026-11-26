@@ -66,6 +66,23 @@ void sub_00462A30(RECOMP_PARAMS)
             wr_log("tick +%.3f ms (next %u, now %u)", (double)(t - last) / 1e6, next, wr_time_ms());
         last = t;
     }
+    {   /* stall report: no tick and no picture for over a second (the picture stands) */
+        static uint64_t last_progress;
+        static int stalled, n_stall;
+        uint64_t tn = wr_time_ns();
+        if (next != next0 || gta2_frames_presented() != f0 || !last_progress) {
+            if (stalled)
+                wr_log("pacing: going again after %.1f s", (double)(tn - last_progress) / 1e9);
+            last_progress = tn;
+            stalled = 0;
+        } else if (!stalled && tn - last_progress > 1000000000ull) {
+            stalled = 1;
+            if (n_stall++ < 20)
+                wr_log("pacing: no tick, no picture for 1 s (next %u, now %u, limiter %u, fps %d, catch-up %u, "
+                       "game %08X, flag 662740 %u)", next, wr_time_ms(), MEM8(0x00595010u), gta2_fps_target(),
+                       MEM8(0x00673598u), MEM32(0x005EB4FCu), MEM8(0x00662740u));
+        }
+    }
     if (next != next0 || gta2_frames_presented() != f0 || !MEM8(0x00595010u))
         return;   /* ticked, drew, or the limiter is off: no waiting */
     if (gta2_fps_target() > 30 && MEM32(0x005EB4FCu) && !MEM8(0x00662740u)) {
@@ -94,6 +111,15 @@ void sub_00462A30(RECOMP_PARAMS)
         g_fps_set_catchup = 0;
     }
     int32_t left = (int32_t)(next - wr_time_ms());
+    if (left > 100) {
+        /* a tick is 33 ms: a deadline further out is not the game's pacing (seen on Android: the
+         * picture stood for seconds, the main thread asleep here) - wait at most 100 ms per step */
+        static int n_far;
+        if (n_far++ < 20)
+            wr_log("pacing: deadline %d ms ahead (next %u, before the step %u, now %u, fps %d, catch-up %u)",
+                   left, next, next0, wr_time_ms(), gta2_fps_target(), MEM8(0x00673598u));
+        left = 100;
+    }
     if (left > 2) {
         uint64_t until = wr_time_ns() + (uint64_t)(left - 1) * 1000000u;
         while (wr_time_ns() < until) {
