@@ -5,6 +5,7 @@ plugins {
 // -Psdl3Src=<SDL3 source: its Java side>  -PoutDir=<build folder outside the repo>  -PprebuiltLibs=<lib folder:
 // arm64-v8a/libSDL3.so, libclang_exe.so, libunshield_exe.so ...>  [-PassetsDir=...]  [-PreleaseStore=<jks>
 // -PreleasePassFile=<pass> [-PreleaseAlias=gta2]]  [-PversionCode=<n> -PversionName=<x.y.z>]
+// [-PmediaTracks=<songs per album, 0 = no Soundtracks page>]
 def sdl3Src = project.findProperty('sdl3Src')
 if (sdl3Src == null) throw new GradleException('pass -Psdl3Src=<SDL3 source>')
 def outDir = project.findProperty('outDir')
@@ -15,12 +16,16 @@ android {
     namespace = 'io.github.almostdrownedrat.gta2'
     compileSdk = 36
     ndkVersion = '30.0.16248370'
+    buildFeatures { resValues = true }    // the resValue below (AGP 9 has them off by default)
     defaultConfig {
         applicationId = 'io.github.almostdrownedrat.gta2'
         minSdk = 29
         targetSdk = 36
         versionCode = (project.findProperty('versionCode') ?: '1') as int     // 1: 0.1.0, the first APK
         versionName = project.findProperty('versionName') ?: '0.1.0'
+        // BACK > Settings > Soundtracks (MediaImport.java, the toolkit template's switch): the game's songs per album;
+        // 0 = no Soundtracks page. GTA 2: on, 500 (the media scan's MEDIA_MAX_TRACKS; the radio station MIXTAPE)
+        resValue 'integer', 'media_tracks', (project.findProperty('mediaTracks') ?: '500')
         ndk { abiFilters 'arm64-v8a' }
     }
     sourceSets {
