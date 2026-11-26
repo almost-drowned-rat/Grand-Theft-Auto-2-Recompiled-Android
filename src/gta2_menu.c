@@ -103,8 +103,14 @@ static const cheat g_cheats[] = {
 };
 #define N_CHEATS ((int)(sizeof g_cheats / sizeof g_cheats[0]))
 
+/* Android: no SHADERS page (no librashader there) and no DISPLAY MODE (always full screen; the maintainer's rule
+ * for every Android port) */
 static const mline l_root[] = {
-    { "RENDERING", L_PAGE, VP_DISPLAY }, { "SHADERS", L_PAGE, VP_SHADERS }, { "PERFORMANCE", L_PAGE, VP_PERF }, { "SOUND", L_PAGE, VP_SOUND },
+    { "RENDERING", L_PAGE, VP_DISPLAY },
+#ifndef __ANDROID__
+    { "SHADERS", L_PAGE, VP_SHADERS },
+#endif
+    { "PERFORMANCE", L_PAGE, VP_PERF }, { "SOUND", L_PAGE, VP_SOUND },
     { "LANGUAGE", L_PAGE, VP_LANG }, { "CONTROLS", L_PAGE, VP_CONTROLS }, { "GAMEPLAY", L_PAGE, VP_GAMEPLAY },
     { "CHEATS", L_PAGE, VP_CHEATS },
 };
@@ -115,7 +121,10 @@ static const mline l_sound[] = {
 /* the MIXTAPE radio station's music (maintainer 2026-11-26) */
 static const mline l_soundtrack[] = { { "SOURCE", L_MTSRC, 0 }, { "PLAYBACK MODE", L_MTMODE, 0 } };
 static const mline l_display[] = {
-    { NULL, L_OPT, OPT_DISPLAY_MODE }, { NULL, L_OPT, OPT_RENDER_RES }, { NULL, L_OPT, OPT_TEXTURE_FILTER },
+#ifndef __ANDROID__
+    { NULL, L_OPT, OPT_DISPLAY_MODE },
+#endif
+    { NULL, L_OPT, OPT_RENDER_RES }, { NULL, L_OPT, OPT_TEXTURE_FILTER },
     { NULL, L_OPT, OPT_FRAME_RATE }, { NULL, L_OPT, OPT_ASPECT },   /* FRAME RATE before ASPECT RATIO (maintainer 2026-11-26) */
 };
 static const mline l_perf[] = {
@@ -171,10 +180,10 @@ static const mline l_quit[] = { { "NO", L_ACTION, ACT_NO }, { "YES", L_ACTION, A
 static const mline l_restart[] = { { "NO", L_ACTION, ACT_NO }, { "YES", L_ACTION, ACT_RESTART_YES } };
 
 static mpage g_pages[VP_COUNT] = {
-    [VP_ROOT]    = { "RECOMP OPTIONS", -1, l_root, 8 },
+    [VP_ROOT]    = { "RECOMP OPTIONS", -1, l_root, (int)(sizeof l_root / sizeof l_root[0]) },
     [VP_SOUND]   = { "SOUND", VP_ROOT, l_sound, 3 },
     [VP_SOUNDTRACK] = { "CUSTOM SOUNDTRACK", VP_SOUND, l_soundtrack, 2 },
-    [VP_DISPLAY] = { "RENDERING", VP_ROOT, l_display, 5 },
+    [VP_DISPLAY] = { "RENDERING", VP_ROOT, l_display, (int)(sizeof l_display / sizeof l_display[0]) },
     [VP_PERF]    = { "PERFORMANCE", VP_ROOT, l_perf, 4 },
     [VP_LANG]    = { "LANGUAGE", VP_ROOT, l_lang, 1 },
     [VP_CONTROLS] = { "CONTROLS", VP_ROOT, l_controls, 6 },
