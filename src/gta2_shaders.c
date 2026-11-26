@@ -170,7 +170,7 @@ const char *gta2_shader_hint(void)
         return "PREPARING THE SHADER PACKS";
     const ShaderIndex *ix = shader_pack_index();
     if (!ix || !ix->n)
-        return "NEEDS A SHADER PACK IN MEDIA SHADERS";
+        return "NEEDS A SHADER PACK IN THE SHADER FOLDER";
     if (st == WR_POST_SHADER_LOADING)
         return "LOADING";
     if (st == WR_POST_SHADER_FAILED)
