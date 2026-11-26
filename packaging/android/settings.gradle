@@ -1,0 +1,19 @@
+// Grand Theft Auto 2 Recompiled for Android (agent L, 2026-11-26) - after the ZOE / Orta Android projects' Gradle setup.
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+    plugins {
+        id 'com.android.application' version '9.5.1'
+    }
+}
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = 'gta2-android'
+include ':app'
