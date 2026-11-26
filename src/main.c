@@ -57,6 +57,19 @@ int main(int argc, char **argv)
     size_t l = strlen(root);
     while (l > 1 && (root[l - 1] == '/' || root[l - 1] == '\\'))
         root[--l] = 0;
+#if !defined(__ANDROID__)
+    if (!(env && *env)) {
+        /* the release layout (the launcher on top, the game in data/): started directly from data/, the game's
+         * folder is the one above it - never data/data, data/saves */
+        char *slash = strrchr(root, '/'), *bs = strrchr(root, '\\');
+        if (bs > slash)
+            slash = bs;
+        if (slash && slash > root && SDL_strcasecmp(slash + 1, "data") == 0) {
+            *slash = 0;
+            l = strlen(root);
+        }
+    }
+#endif
 #if defined(__ANDROID__)
     {   /* measurements on a device (no shell env there): <folder>/dev_env.txt, KEY=VALUE per line (like the
          * other Android ports; remove it after a bench) */

@@ -67,9 +67,12 @@ Targets: Windows, Linux, Android. Renderer: Vulkan 1.1 baseline. Toolkit: winrec
 - ~~Play through all three districts~~ dropped (maintainer 2026-11-26: too long; crashes are fixed as they show up)
 - [x] Performance: constant 60 FPS, game logic speed correct (M4b: 61 / 122 frames per s at 60 / 120, ticks 33.0 ms; maintainer: "funktioniert tadellos", 2026-11-26)
 
-## M7 — Windows build (PAUSED: done on a Windows PC)
-- [ ] MSVC/clang build, Win95 launcher, settings menu (option-p RECOMP layout)
-- [ ] Test on Windows
+## M7 — Windows build (DONE 2026-11-26, v0.7.0 Windows)
+- [x] llvm-mingw clang build (runtime: Vulkan SDK headers, Threads, `wr_sleep_ns` high-resolution waits, Windows
+      crash report), Win95 launcher (launcher/game_setup_ui_win95.c), the in-game RECOMP OPTIONS as on Linux
+- [x] Release: tools/windows/release_windows.ps1 (docs/windows_release.md), GTA2-windows-x86_64.zip
+- [x] Test on Windows 11 (RTX 3050 Ti): first start from GTA2.exe in ~3 min, menu + in-game at 30 and 60 fps
+- [ ] Hang watchdog on Windows (POSIX only so far)
 
 ## M8 — Android build (only after M6 is finished and everything is tested; maintainer 2026-11-26)
 - [ ] APK (ARM64), Vista launcher (Android standard), game data import

@@ -1,0 +1,30 @@
+// gta2_recomp.exe's resources (tools/windows/release_windows.ps1 compiles them with llvm-windres into gta2_res.o,
+// linked on the player's PC): the icon (resource 1), an asInvoker manifest and VERSIONINFO. @ICO@ @MANIFEST@
+// @VER_COMMAS@ @VERSION@ are filled in by the release script.
+1 ICON "@ICO@"
+1 24 "@MANIFEST@"
+1 VERSIONINFO
+FILEVERSION @VER_COMMAS@,0
+PRODUCTVERSION @VER_COMMAS@,0
+FILEOS 0x40004
+FILETYPE 0x1
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0"
+    BEGIN
+      VALUE "CompanyName", "almost-drowned-rat"
+      VALUE "FileDescription", "Grand Theft Auto 2 Recompiled"
+      VALUE "FileVersion", "@VERSION@"
+      VALUE "InternalName", "gta2_recomp"
+      VALUE "LegalCopyright", "MIT (the port); GTA 2 itself is not included"
+      VALUE "OriginalFilename", "gta2_recomp.exe"
+      VALUE "ProductName", "Grand Theft Auto 2 Recompiled"
+      VALUE "ProductVersion", "@VERSION@"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END

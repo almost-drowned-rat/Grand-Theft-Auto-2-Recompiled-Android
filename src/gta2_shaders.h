@@ -28,5 +28,8 @@ void gta2_shader_set_resolution(int r);
 
 #include <stdint.h>
 const uint32_t *gta2_shader_test_picture(void);   /* 640x480 RGBA */
+void gta2_shader_test_reload(void);   /* data/shader_test.png changed */
+/* SHADERS > TAKE TEST PICTURE (pause menu): 2 = asked (the menu is hidden), 1 = saved this frame, -1 = reload */
+extern int g_gta2_test_grab;
 
 #endif

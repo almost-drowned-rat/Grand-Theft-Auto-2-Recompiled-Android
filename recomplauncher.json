@@ -18,15 +18,15 @@
     }
   ],
   "prepare": {
-    "program": ["GTA2-x86_64.AppImage", "gta2_launcher"],
+    "program": ["gta2_launcher.exe", "GTA2-x86_64.AppImage", "gta2_launcher"],
     "args": ["--installer={input:game}", "--file={input:translations}", "--go", "--no-start"],
     "env": { "RECOMP_NO_DIALOGS": "1" },
     "label": "Unpacking your GTA 2, translating and compiling the game for your PC (a few minutes, only once)",
     "keeps_copy": true,
-    "done": ["{install}/data/build/stamp.txt", "{install}/data/gta2_recomp", "{install}/game/gta2.exe"]
+    "done": ["{install}/data/build/stamp.txt", "{install}/game/gta2.exe"]
   },
   "start": {
-    "program": ["GTA2-x86_64.AppImage", "gta2_launcher"]
+    "program": ["gta2_launcher.exe", "GTA2-x86_64.AppImage", "gta2_launcher"]
   },
   "config": [
     {
@@ -44,6 +44,7 @@
     "shader": [{ "path": "{install}/shader" }]
   },
   "system": {
+    "windows": { "version": "10", "graphics": { "vulkan": "1.1" } },
     "linux": { "glibc": "2.35", "graphics": { "vulkan": "1.1" } }
   },
   "actions": [

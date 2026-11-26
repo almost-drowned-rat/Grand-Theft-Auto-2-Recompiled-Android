@@ -85,10 +85,9 @@ void sub_00462A30(RECOMP_PARAMS)
         }
         /* sleep to the next frame or the tick, whichever comes first */
         uint64_t period = 1000000000ull / (uint64_t)gta2_fps_target();
-        struct timespec ts = { 0, (long)(period / 4) };
         int32_t left_ms = (int32_t)(next - wr_time_ms());
         if (left_ms > 1)
-            nanosleep(&ts, NULL);
+            wr_sleep_ns(period / 4);
         return;
     } else if (gta2_fps_target() <= 30 && g_fps_set_catchup) {
         MEM8(0x00673598u) = 0;   /* back at 30: the original re-base pacing */
@@ -99,8 +98,7 @@ void sub_00462A30(RECOMP_PARAMS)
         uint64_t until = wr_time_ns() + (uint64_t)(left - 1) * 1000000u;
         while (wr_time_ns() < until) {
             uint64_t rest = until - wr_time_ns();
-            struct timespec ts = { 0, (long)(rest > 900000 ? rest - 200000 : rest) };
-            nanosleep(&ts, NULL);
+            wr_sleep_ns(rest > 900000 ? rest - 200000 : rest);
         }
     }
 }
@@ -156,8 +154,7 @@ void sub_0045A320(RECOMP_PARAMS)
         uint64_t until = wr_time_ns() + (uint64_t)(left - 1) * 1000000u;
         while (wr_time_ns() < until) {
             uint64_t rest = until - wr_time_ns();
-            struct timespec ts = { 0, (long)(rest > 900000 ? rest - 200000 : rest) };
-            nanosleep(&ts, NULL);
+            wr_sleep_ns(rest > 900000 ? rest - 200000 : rest);
         }
     }
 }

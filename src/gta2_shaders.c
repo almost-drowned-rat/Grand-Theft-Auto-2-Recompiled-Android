@@ -317,32 +317,47 @@ void gta2_shader_dir_title(char *out, size_t cap)
 }
 
 /* ---- the test picture behind the SHADERS pages (frontend) ------------------------------ *
- * The player's data/shader_test.bmp when there is one (e.g. a screenshot of
- * his own game), else made here, no game data: colour bars, a grey ramp, fine line patterns,
+ * The player's data/shader_test.png (SHADERS > TAKE TEST PICTURE in the pause menu saves the game's
+ * picture there) or data/shader_test.bmp when there is one, else made here, no game data: colour bars, a grey ramp, fine line patterns,
  * a checkerboard, circles and a small pixel-art city block - what shows
  * scanlines, masks, sharpness, colour and gamma of a preset. */
 #define TW 640
 #define TH 480
-static uint32_t g_test[TW * TH];
+static uint32_t g_test_buf[2][TW * TH];   /* two: a reloaded picture is a new pointer (the renderer's texture) */
+static uint32_t *g_test = g_test_buf[0];
+static int g_test_made;
 
 static uint32_t rgb(int r, int g, int b) { return (uint32_t)r | (uint32_t)g << 8 | (uint32_t)b << 16 | 0xFF000000u; }
 
-/* the player's own test picture: data/shader_test.bmp (any size, scaled to 640x480) */
+/* the player's own test picture: data/shader_test.png, else .bmp (any size; a wider picture - a widescreen
+ * game - gives its centre 4:3, then scaled to 640x480) */
 static int load_test_bmp(void)
 {
     char path[1200];
-    snprintf(path, sizeof path, "%s/shader_test.bmp", g_wr_paths.data);
-    SDL_Surface *s = SDL_LoadBMP(path);
+    snprintf(path, sizeof path, "%s/shader_test.png", g_wr_paths.data);
+    SDL_Surface *s = SDL_LoadPNG(path);
+    if (!s) {
+        snprintf(path, sizeof path, "%s/shader_test.bmp", g_wr_paths.data);
+        s = SDL_LoadBMP(path);
+    }
     if (!s)
         return 0;
     SDL_Surface *c = SDL_ConvertSurface(s, SDL_PIXELFORMAT_RGBA32);
     SDL_DestroySurface(s);
     if (!c)
         return 0;
+    int cw = c->w, ch = c->h, cx = 0, cy = 0;
+    if (cw * 3 > ch * 4) {   /* wider than 4:3: the centre */
+        cw = ch * 4 / 3;
+        cx = (c->w - cw) / 2;
+    } else if (cw * 3 < ch * 4) {
+        ch = cw * 3 / 4;
+        cy = (c->h - ch) / 2;
+    }
     for (int y = 0; y < TH; y++)
         for (int x = 0; x < TW; x++) {
-            const uint8_t *p = (const uint8_t *)c->pixels + (size_t)(y * c->h / TH) * (size_t)c->pitch +
-                               (size_t)(x * c->w / TW) * 4;
+            const uint8_t *p = (const uint8_t *)c->pixels + (size_t)(cy + y * ch / TH) * (size_t)c->pitch +
+                               (size_t)(cx + x * cw / TW) * 4;
             g_test[y * TW + x] = rgb(p[0], p[1], p[2]);
         }
     SDL_DestroySurface(c);
@@ -350,12 +365,18 @@ static int load_test_bmp(void)
     return 1;
 }
 
+/* the picture changed on disk (TAKE TEST PICTURE): read again at the next use, into the other buffer */
+void gta2_shader_test_reload(void)
+{
+    g_test = g_test == g_test_buf[0] ? g_test_buf[1] : g_test_buf[0];
+    g_test_made = 0;
+}
+
 const uint32_t *gta2_shader_test_picture(void)
 {
-    static int made;
-    if (made)
+    if (g_test_made)
         return g_test;
-    made = 1;
+    g_test_made = 1;
     if (load_test_bmp())
         return g_test;
     static const int bars[8][3] = { { 192, 192, 192 }, { 192, 192, 0 }, { 0, 192, 192 }, { 0, 192, 0 },

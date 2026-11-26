@@ -26,7 +26,11 @@ int main(int argc, char **argv)
         "That is neither the GTA 2 freeware installer (GTA2.exe, the 2004 Rockstar release) nor a folder with that "
         "GTA 2 installed.",
         "Grand Theft Auto 2 Recompiled - Setup",
+#ifdef _WIN32
+        "gta2_recomp.exe",                  /* data\gta2_recomp.exe (the zip's top: only gta2_launcher.exe) */
+#else
         "gta2_recomp",
+#endif
         ICON_DATA,
         "Translations (optional):",
         "Translations (GTA2-translations.pak)",

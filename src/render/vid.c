@@ -196,6 +196,20 @@ void gfx_flip(void)
             capture[0] = 0;
         }
     }
+    /* SHADERS > TAKE TEST PICTURE: the paused game's picture (HUD, no menu - it is hidden for these frames) as
+     * the SHADERS pages' test picture, data/shader_test.png (the file is written at this frame's end) */
+    if (g_gta2_test_grab == -1) {
+        gta2_shader_test_reload();
+        g_gta2_test_grab = 0;
+    } else if (g_gta2_test_grab == 1) {
+        char path[1300];
+        snprintf(path, sizeof path, "%s/shader_test.png", g_wr_paths.data);
+        wr_vk_dump_target(g_gfx.target, path);
+        wr_log("shaders: test picture taken from the game");
+        g_gta2_test_grab = -1;
+    } else if (g_gta2_test_grab > 1) {
+        g_gta2_test_grab--;
+    }
     int x, y, w, h;
     wr_vk_fit_rect(g_vk.extent.width, g_vk.extent.height, g_gfx.w, g_gfx.h, &x, &y, &w, &h);
     g_centre_px[0] = (float)x + (float)w * 0.5f;

@@ -94,10 +94,8 @@ WR_HANDLER(BinkBufferBlit)
             slot = slot ? slot + avg : now + 8000000ull;
             if (now > slot + 2000000ull)
                 slot = now + 8000000ull;                      /* far behind: a new grid */
-            if (slot > now && slot - now < 25000000ull) {
-                struct timespec ts = { 0, (long)(slot - now) };
-                nanosleep(&ts, NULL);
-            }
+            if (slot > now && slot - now < 25000000ull)
+                wr_sleep_ns(slot - now);
         } else {
             avg = 0;
             slot = 0;
@@ -156,8 +154,7 @@ WR_HANDLER(BinkWaitSleep)
     uint32_t r = wr_call_guest(ctx, BINK_WAIT_VA, 1, &bk);
     if (r) {
         wr_coop_run(ctx);
-        struct timespec ts = { 0, 1000000L };
-        nanosleep(&ts, NULL);
+        wr_sleep_ns(1000000ull);
     }
     WR_RET(r, 1);
 }

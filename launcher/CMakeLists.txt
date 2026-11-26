@@ -42,13 +42,53 @@ foreach(face Regular Bold)
     endif()
 endforeach()
 
-add_executable(gta2_launcher
+# Windows: the Windows 95 look in plain Win32 + GDI (game_setup_ui_win95.c, option-p's window - the maintainer's rule
+# per system: Windows Win95, Linux Win2000); elsewhere the SDL window above.
+if(WIN32)
+    set(setup_ui game_setup_ui_win95.c)
+else()
+    set(setup_ui game_setup_ui_win95_sdl.c)
+endif()
+add_executable(gta2_launcher WIN32
     launcher_main.c
     launcher.c
-    game_setup_ui_win95_sdl.c
+    ${setup_ui}
     sha256.c
     zip_read.c
     third_party/miniz/miniz_tinfl.c)
+if(WIN32)
+    # the exe's resource: the icon (resource 1: the window class and the title bar), VERSIONINFO and an asInvoker
+    # manifest (both keep heuristic virus scanners calmer; the release stays unsigned)
+    set(GTA2_LAUNCHER_ICO "" CACHE FILEPATH "the exe's icon (.ico), e.g. assets/icon.ico")
+    set(GTA2_LAUNCHER_VERSION "0.0.0" CACHE STRING "the release's version for VERSIONINFO (a.b.c)")
+    enable_language(RC)
+    string(REPLACE "." "," ver_commas "${GTA2_LAUNCHER_VERSION}")
+    set(rc "${CMAKE_CURRENT_BINARY_DIR}/launcher.rc")
+    file(WRITE ${rc} "")
+    if(GTA2_LAUNCHER_ICO)
+        file(TO_CMAKE_PATH "${GTA2_LAUNCHER_ICO}" ico)
+        file(APPEND ${rc} "1 ICON \"${ico}\"\n")
+    endif()
+    file(TO_CMAKE_PATH "${CMAKE_CURRENT_LIST_DIR}/windows/gta2_launcher.manifest" manifest)
+    file(APPEND ${rc} "1 24 \"${manifest}\"\n"
+        "1 VERSIONINFO\nFILEVERSION ${ver_commas},0\nPRODUCTVERSION ${ver_commas},0\nFILEOS 0x40004\nFILETYPE 0x1\n"
+        "BEGIN\n  BLOCK \"StringFileInfo\"\n  BEGIN\n    BLOCK \"040904B0\"\n    BEGIN\n"
+        "      VALUE \"CompanyName\", \"almost-drowned-rat\"\n"
+        "      VALUE \"FileDescription\", \"Grand Theft Auto 2 Recompiled - launcher\"\n"
+        "      VALUE \"FileVersion\", \"${GTA2_LAUNCHER_VERSION}\"\n"
+        "      VALUE \"InternalName\", \"gta2_launcher\"\n"
+        "      VALUE \"LegalCopyright\", \"GPL-3.0-or-later\"\n"
+        "      VALUE \"OriginalFilename\", \"gta2_launcher.exe\"\n"
+        "      VALUE \"ProductName\", \"Grand Theft Auto 2 Recompiled\"\n"
+        "      VALUE \"ProductVersion\", \"${GTA2_LAUNCHER_VERSION}\"\n"
+        "    END\n  END\n  BLOCK \"VarFileInfo\"\n  BEGIN\n    VALUE \"Translation\", 0x409, 1200\n  END\nEND\n")
+    target_sources(gta2_launcher PRIVATE ${rc})
+    set_source_files_properties(${rc} PROPERTIES OBJECT_DEPENDS "${GTA2_LAUNCHER_ICO};${manifest}")
+    target_link_libraries(gta2_launcher PRIVATE comdlg32 gdi32 user32 shell32 ole32)
+    if(MINGW)
+        target_link_options(gta2_launcher PRIVATE -static -s)
+    endif()
+endif()
 target_include_directories(gta2_launcher PRIVATE ${CMAKE_CURRENT_LIST_DIR} ${CMAKE_CURRENT_LIST_DIR}/third_party/miniz
                                                  ${CMAKE_CURRENT_BINARY_DIR} ${launcher_gen})
 # miniz (3.1.2, MIT, third_party/miniz/LICENSE): only its inflate; miniz_export.h, which its own build makes, empty

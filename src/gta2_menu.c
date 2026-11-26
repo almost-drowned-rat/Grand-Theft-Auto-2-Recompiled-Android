@@ -70,7 +70,7 @@ enum { VP_ROOT, VP_SOUND, VP_DISPLAY, VP_PERF, VP_LANG, VP_CONTROLS, VP_CHEATS, 
        VP_QUITPROG, VP_MAPPING, VP_GAMEPLAY, VP_SHADERS, VP_SHBROWSE, VP_SHPARAMS, VP_OVERVIEW, VP_PADVIEW, VP_SOUNDTRACK, VP_COUNT };
 enum { L_PAGE, L_OPT, L_VOL, L_CHEAT, L_LANG, L_ACTION, L_BACK, L_DEVICE, L_BIND, L_SHON, L_SHPRESET, L_SHITEM, L_SHRES, L_SHPARAMS, L_SHPARAM, L_OVR, L_PADVIEW, L_MTSRC, L_MTMODE };
 enum { ACT_UNLOCK_AREAS = 1, ACT_RESTART_NOW, ACT_RESTART_LATER, ACT_EXIT_NO, ACT_EXIT_YES, ACT_RESUME, ACT_QUIT_YES,
-       ACT_RESTART_YES, ACT_NO, ACT_QUITPROG_YES };
+       ACT_RESTART_YES, ACT_NO, ACT_QUITPROG_YES, ACT_TEST_PICTURE };
 enum { VOL_MUSIC, VOL_SFX };
 
 typedef struct { const char *label; int kind, arg; } mline;
@@ -142,8 +142,12 @@ static mline l_overview[32];
 static mline l_mapping[1 + GTA2_BIND_N];
 /* SHADERS (RetroArch slang; gta2_shaders.c) and its preset browser */
 /* the N64 recomps' layout: Shader / Shader selection > / Shader resolution / Shader parameters > */
+/* + TAKE TEST PICTURE in the pause menu only (the game's picture behind it; maintainer 2026-11-26: the test picture
+ * comes from the player's own game, none is shipped) */
 static const mline l_shaders[] = { { "SHADER", L_SHON, 0 }, { "SHADER SELECTION", L_SHPRESET, 0 },
-                                   { "SHADER RESOLUTION", L_SHRES, 0 }, { "SHADER PARAMETERS", L_SHPARAMS, 0 } };
+                                   { "SHADER RESOLUTION", L_SHRES, 0 }, { "SHADER PARAMETERS", L_SHPARAMS, 0 },
+                                   { "TAKE TEST PICTURE", L_ACTION, ACT_TEST_PICTURE } };
+int g_gta2_test_grab;
 static mline l_shparams[128];
 static mline l_browse[1024];
 static char g_browse_title[64] = "SHADER PACKS";
@@ -530,6 +534,7 @@ static void pause_close(X86Ctx *ctx, int resume)
         call_this(ctx, FN_RESUME, g, 0, NULL);
     g_pause_open = 0;
     g_host = HOST_FRONTEND;
+    g_pages[VP_SHADERS].n = 4;   /* no game picture behind the main menu */
     g_wr_input_captured = 0;
 }
 
@@ -724,6 +729,9 @@ static void menu_keys(X86Ctx *ctx, uint32_t f, int left, int right, int up, int 
             go_back(ctx, f);
         } else if (l->kind == L_ACTION && l->arg == ACT_EXIT_YES) {
             g_post_quit = 1;   /* the frontend's result, set after the game's input step */
+        } else if (l->kind == L_ACTION && l->arg == ACT_TEST_PICTURE) {
+            g_gta2_test_grab = 3;   /* the menu hidden for two frames, then the picture saved */
+            wr_wr32(FE_SOUND, SND_SELECT);
         } else if (l->kind == L_ACTION && l->arg == ACT_RESTART_NOW) {
             wr_restart();
         } else if (l->kind == L_ACTION && l->arg == ACT_RESTART_LATER) {
@@ -1100,6 +1108,7 @@ void gta2_pause_tick(X86Ctx *ctx)
         build_cheat_page();
         g_pause_open = 1;
         g_host = HOST_PAUSE;
+        g_pages[VP_SHADERS].n = 5;   /* + TAKE TEST PICTURE */
         g_wr_input_captured = 1;
         g_vp = VP_PAUSE;
         g_cur = g_top = 0;
@@ -1119,7 +1128,7 @@ int gta2_pause_hide_panel(void) { return g_pause_open; }
 /* After the game drew its HUD (sub_004CA440, inside Begin/EndScene). */
 void gta2_pause_draw(X86Ctx *ctx)
 {
-    if (!g_pause_open)
+    if (!g_pause_open || g_gta2_test_grab > 0)   /* TAKE TEST PICTURE: the game's picture without the menu */
         return;
     if (!g_strbuf)
         g_strbuf = wr_galloc(256);
@@ -1156,7 +1165,7 @@ void gta2_pause_draw(X86Ctx *ctx)
     if (g_top + VISIBLE < pg->n)
         put_text(ctx, "...", x0, y0 + VISIBLE * 24 - 6, P_FONT, 0x4000);
     if (g_vp == VP_SHADERS && gta2_shader_hint())
-        put_text(ctx, gta2_shader_hint(), x0, y0 + 3 * 24, P_FONT, 0x4000);
+        put_text(ctx, gta2_shader_hint(), x0, y0 + pg->n * 24, P_FONT, 0x4000);
     if (g_vp == VP_LANG)
     {
         put_text(ctx, "THE NEW LANGUAGE", x0, y0 + 3 * 24, P_FONT, 0x4000);

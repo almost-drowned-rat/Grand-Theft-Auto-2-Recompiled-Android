@@ -1458,9 +1458,22 @@ int gta_launcher_main(const GtaLauncherConfig *cfg, int argc, char **argv)
         char self[LP] = "", real[LP];
         const char *exe_name = SDL_getenv("GTA2_LAUNCHER_SELF");    /* tests: the program the payload is on */
         const char *appimage = SDL_getenv("APPIMAGE"), *appdir = SDL_getenv("APPDIR");
+#ifdef _WIN32
+        /* Windows (the zip's gta2_launcher.exe): this exe's own path (UTF-8), the root its folder (SDL_GetBasePath);
+         * no AppImage. The build's tools go into a job object: stopped together when the player quits. */
+        wchar_t wself[LP];
+        DWORD wn = GetModuleFileNameW(NULL, wself, LP);
+        real[0] = 0;
+        if (wn > 0 && wn < LP && !WideCharToMultiByte(CP_UTF8, 0, wself, -1, real, sizeof real, NULL, NULL))
+            real[0] = 0;
+        snprintf(self, sizeof self, "%s", real);
+        appimage = appdir = NULL;
+        l.job = CreateJobObjectW(NULL, NULL);
+#else
         ssize_t n = readlink("/proc/self/exe", real, sizeof real - 1);
         real[n > 0 ? n : 0] = 0;
         snprintf(self, sizeof self, "%s", real[0] ? real : "/proc/self/exe");
+#endif
         if (appimage && appimage[0] == '/') {
             char *slash;
             snprintf(l.appimage, sizeof l.appimage, "%s", appimage);
