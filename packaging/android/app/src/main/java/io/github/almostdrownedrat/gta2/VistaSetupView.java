@@ -427,7 +427,7 @@ final class VistaSetupView extends View {
             p.setColor(form ? 0xFF000000 : 0xFF6D6D6D);
             c.drawText(ROW_LABEL[r], L, ry + fh * 0.68f, p);
             // the first row: Browse... (GTA2.exe) and Folder... (an installed GTA 2)
-            float right = r == ROW_INSTALLER ? R - 2 * browseW - 8 * s : R;
+            float right = r == ROW_INSTALLER ? R - browseW - 8 * s : R;   // Browse... right beside Folder...
             RectF f = new RectF(L + labelW, ry, right - browseW - 8 * s, ry + fh);
             String shownName = r == ROW_INSTALLER && rowName[r].isEmpty() && gameFiles ? GAME_FILES : rowName[r];
             field(c, f, shownName, r == 0 ? "GTA2.exe or a GTA 2 folder" : "(none)", form);
