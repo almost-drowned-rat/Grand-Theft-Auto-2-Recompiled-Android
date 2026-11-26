@@ -1,89 +1,87 @@
 <p align="center">
-  <img src="assets/icon_256.png" alt="Grand Theft Auto 2 Recompiled" width="160">
+  <img src="assets/icon_256.png" alt="Grand Theft Auto 2 Recompiled for Android" width="160">
 </p>
 
-# Grand Theft Auto 2 Recompiled
+# Grand Theft Auto 2 Recompiled - Android
 
-A native PC port of *Grand Theft Auto 2* (1999, the PC version) made by **static recompilation**: the game's own
-x86 code is translated to C and compiled for your machine, with a Vulkan renderer, SDL3 for input and sound, and
-no emulator, no Windows layer and no original DLLs. Windows and Linux, and an
-[Android version](https://github.com/almost-drowned-rat/Grand-Theft-Auto-2-Recompiled-Android).
-
-<a href="https://recomplauncher.com"><picture><source media="(prefers-color-scheme: dark)" srcset="https://recomplauncher.com/assets/press/launcher/badge-light.svg"><img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg" height="48"></picture></a>
+The Android port of [Grand Theft Auto 2 Recompiled](https://github.com/almost-drowned-rat/Grand-Theft-Auto-2-Recompiled),
+the static recompilation of *Grand Theft Auto 2* (PC). One app: you choose your own GTA 2, the game is translated and
+compiled **on your device** once, and then it plays - with a gamepad, a handheld's own controls or touch buttons.
 
 > This project contains **no game data and no game code**. You need GTA 2 yourself: the **2004 Rockstar freeware
-> release** (`GTA2.exe`, the installer, about 360 MB) or a GTA 2 you installed from it. The game is translated and
-> compiled **on your own PC** from your copy at the first start.
+> release** (`GTA2.exe`, the installer, about 360 MB) or a folder with a GTA 2 installed from it. The app never
+> contains any of the game's code: it is built on your device from your copy.
 
 > **AI disclosure:** AI assistance yes (Claude Code by Anthropic).
 
-## Download and play
+> **Early release, tested on one device.** I have tested this port only on an AYN Odin 2 Portal (Snapdragon 8 Gen 2,
+> Adreno 740). Other devices may work, but I could not test them; reports are welcome.
 
-Download the latest release from [Releases](https://github.com/almost-drowned-rat/Grand-Theft-Auto-2-Recompiled/releases).
+---
 
-- **Windows:** unpack the zip into an empty folder and start the launcher in it.
-- **Linux:** `GTA2-x86_64.AppImage` (make it executable and start it), or `GTA2-linux-x86_64.tar.gz` if you cannot
-  use AppImages (no FUSE). Needs glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 or later) and a Vulkan 1.1
-  driver.
+## Status
 
-At the first start the launcher asks for your **GTA 2 installer (`GTA2.exe`)** - or a folder with an **installed
-GTA 2** - and, optionally, the **translations pack** (`GTA2-translations.pak`, its own download in the release). It
-unpacks the game files, translates `gta2.exe` and the movie decoder to C and compiles them; this takes a few
-minutes, once. Later starts go straight into the game. Your installer or folder is only read, never changed.
+**v0.4.0** - the first Android release. Based on
+[Grand Theft Auto 2 Recompiled v0.7.0](https://github.com/almost-drowned-rat/Grand-Theft-Auto-2-Recompiled/releases/tag/v0.7.0)
+(Windows / Linux). Download the APK from
+[Releases](https://github.com/almost-drowned-rat/Grand-Theft-Auto-2-Recompiled-Android/releases) and install it
+(Android 10+, arm64). It is signed with the project's own key - every later update installs over it and keeps your
+saves. The app counts its versions on its own; every release names the desktop version it is based on.
 
-Everything stays in the game's folder: `game/` (the game's files), `saves/` (your saves and settings), `data/`
-(logs, caches - safe to delete), `media/` (your own music). Nothing is written anywhere else.
+To get updates automatically, add this repository to [Obtainium](https://github.com/ImranR98/Obtainium)
+(`https://github.com/almost-drowned-rat/Grand-Theft-Auto-2-Recompiled-Android`).
 
-## Features
+| Device | Chip / GPU | Driver | Result |
+|---|---|---|---|
+| AYN Odin 2 Portal (Android 13) | Snapdragon 8 Gen 2 / Adreno 740 | system driver | runs; first start about 4 minutes |
 
-- **RECOMP OPTIONS** in the game's own options menu (no separate settings program):
-  - **Rendering:** display mode (borderless / fullscreen / windowed), render resolution, texture filtering, frame
-    rate, aspect ratio 4:3 / 16:9 / 16:10 / 21:9 (real widescreen: you see more of the city, nothing is stretched;
-    menus stay 4:3)
-  - **Frame rate:** 30 (original), 60 or 120 interpolated - the game logic keeps its original 30 ticks per second,
-    the frames in between are drawn from it, so the game never runs faster
-  - **Performance:** V-Sync, FPS counter, frame time, game speed
-  - **Shaders:** RetroArch slang shader presets (librashader) - put a shader pack into `media/shaders/`
-  - **Gameplay:** the settings of the old GTA 2 Manager (pedestrians, traffic, sprint, more blood)
-  - **Cheats:** the game's own cheats as switches
-- **Controls:** any SDL3 gamepad with hot-plug and rumble (explosions), a classic and a modern pad layout plus your
-  own mapping, keyboard only or keyboard + mouse; an illustrated controller layout and a control overview
-- **MIXTAPE**, a radio station of your own: put your music (MP3, FLAC, Ogg Vorbis, WAV) into album folders under
-  `media/`; it plays on like a radio station after the game's stations. All albums or one, in order or shuffled.
-- **Languages:** English and Spanish come with the game. The translations pack adds **German, French, Italian, Polish,
-  Russian, Japanese and Chinese** (all game texts; the port's own menus stay English, radio station names stay as
-  they are). Pick the language in the game's options.
-- Crash-safe saves, a detailed log in `data/gta2.log` (the previous run in `gta2.previous.log`)
+## Requirements
 
-## Supported version
+- Android 10 or newer, **arm64** (64-bit ARM)
+- A GPU with a **Vulkan 1.1** driver (the system driver is enough; a Turnip driver package can be chosen too)
+- Your own GTA 2: the freeware installer **`GTA2.exe`** or an **installed GTA 2 folder** (with `gta2.exe` and its
+  `data` folder)
+- Optional: the **translations pack** `GTA2-translations.pak` from the
+  [desktop release](https://github.com/almost-drowned-rat/Grand-Theft-Auto-2-Recompiled/releases/tag/v0.7.0) for
+  German, French, Italian, Polish, Russian, Japanese and Chinese (English and Spanish come with the game)
+- Free storage: about **2 GB** during the first start, about **500 MB** after it
 
-| Release | File | `gta2.exe` SHA-1 |
-|---|---|---|
-| Rockstar freeware release (2004, build 2004-04-27) | `GTA2.exe` installer, about 360 MB | `646e1d479fa2aea12b3ff448fa23f6362f9e012f` |
+## First start
 
-## Building from source
+1. Install the APK and open **GTA 2 Recomp**.
+2. Pick your **GTA 2 installer** with **Browse...** - or an installed GTA 2 with **Folder...**. Optionally pick the
+   translations pack and a graphics driver.
+3. Tap **Install**. The app copies the game files into its own folder, translates the game's code to C and compiles
+   it on your device (a few minutes, once). Keep the app open.
+4. Tap **Play**.
 
-The port: `src/` (game-specific code), the toolkit [winrecomp](https://github.com/almost-drowned-rat/winrecomp)
-(runtime, Win32 layer, lifter) beside it as `../winrecomp`. Linux:
+Your installer or folder is only read: afterwards the game uses only its own copy, so you can delete or move the
+original. After an app update the game is built again from that copy - no need to pick anything again.
 
-```sh
-python3 tools/setup_build.py extract --installer GTA2.exe --unshield "$(command -v unshield)" --work work --game run/game
-python3 tools/setup_build.py lift --game run/game --toolkit ../winrecomp --config config --work work
-# or tools/lift.sh / tools/lift.sh bink with the toolkit's Python venv (capstone, pefile)
-cmake -S . -B build -G Ninja && ninja -C build
-WR_ROOT=run build/gta2_recomp
-```
+## Playing
 
-The release packaging: `docs/linux_release.md`. Generated C, game files and builds are never committed.
+- **Controls:** any gamepad (also the Odin's built-in controls) or the **touch buttons**; rumble on the pad you used
+  last, or the device's own vibration.
+- **BACK** (the system back gesture / button) opens the side menu: **Back to the game**, **Controls** (touch
+  buttons, layout, size, opacity), **Settings** (Saves: import / export, Export log, Graphics driver).
+- **RECOMP OPTIONS** in the game's own options menu: render resolution, texture filtering, frame rate (30 / 60 /
+  120 interpolated), aspect ratio (4:3 / 16:9 / 16:10 / 21:9, real widescreen), V-Sync, FPS counter, the old GTA 2
+  Manager's gameplay settings, cheats, language, controls, MIXTAPE (your own music as a radio station: put album
+  folders into `media/`).
+- The game's folder on the device: `Android/data/io.github.almostdrownedrat.gta2/files/` - `game/` (the game's
+  files), `saves/`, `data/` (logs: `data/gta2.log`), `media/` (your music).
 
-## Thanks
+## Building
 
-- Rockstar Games for releasing GTA 2 as freeware
-- [SDL](https://libsdl.org), [librashader](https://github.com/SnowflakePowered/librashader),
-  [capstone](https://www.capstone-engine.org), [pefile](https://github.com/erocarrera/pefile),
-  [unshield](https://github.com/twogood/unshield), dr_libs, stb_vorbis, Noto fonts
+See the desktop repository for the port; this branch adds `packaging/android/` (the app: setup, side menu, touch
+controls, Vulkan driver loader) and its kit builder `packaging/android/make_setup_assets.py`.
 
-Licence: MIT for the port (the Linux launcher GPL-3.0) - see `LICENSES.md`.
+## Licence
+
+The app (`packaging/android/`) is GPL-3.0-or-later (`LICENSE-GPL-3.0.txt`); the port and the toolkit are MIT
+(`LICENSE`, `LICENSES.md`). The APK carries SDL 3 (zlib), libadrenotools (BSD-2-Clause), CPython (PSF), capstone
+(BSD-3-Clause), pefile (MIT), unshield (MIT) and the LLVM compiler (Apache-2.0 WITH LLVM-exception); their licence
+texts are in the app (About and licences).
 
 Grand Theft Auto and GTA are trademarks of Take-Two Interactive Software. This project is not affiliated with or
 endorsed by Rockstar Games or Take-Two Interactive.
