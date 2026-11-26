@@ -103,17 +103,19 @@ static const cheat g_cheats[] = {
 };
 #define N_CHEATS ((int)(sizeof g_cheats / sizeof g_cheats[0]))
 
-/* Android: no SHADERS page (no librashader there) and no DISPLAY MODE (always full screen; the maintainer's rule
- * for every Android port) */
+/* Android: no DISPLAY MODE (always full screen; the maintainer's rule for every Android port); SHADERS there too
+ * since 2026-11-26 (the APK carries librashader, packs come in through BACK > Settings > Shaders) */
+/* LANGUAGE is a line of its own here (no sub-page, maintainer 2026-11-26); once it differs from the language the
+ * game started with, RESTART NOW / RESTART LATER are the page's last two lines - LATER hides them until the next
+ * time RECOMP OPTIONS opens, so the question comes again */
 static const mline l_root[] = {
-    { "RENDERING", L_PAGE, VP_DISPLAY },
-#ifndef __ANDROID__
-    { "SHADERS", L_PAGE, VP_SHADERS },
-#endif
+    { "RENDERING", L_PAGE, VP_DISPLAY }, { "SHADERS", L_PAGE, VP_SHADERS },
     { "PERFORMANCE", L_PAGE, VP_PERF }, { "SOUND", L_PAGE, VP_SOUND },
-    { "LANGUAGE", L_PAGE, VP_LANG }, { "CONTROLS", L_PAGE, VP_CONTROLS }, { "GAMEPLAY", L_PAGE, VP_GAMEPLAY },
+    { "LANGUAGE", L_LANG, 0 }, { "CONTROLS", L_PAGE, VP_CONTROLS }, { "GAMEPLAY", L_PAGE, VP_GAMEPLAY },
     { "CHEATS", L_PAGE, VP_CHEATS },
+    { "RESTART NOW", L_ACTION, ACT_RESTART_NOW }, { "RESTART LATER", L_ACTION, ACT_RESTART_LATER },
 };
+#define N_ROOT ((int)(sizeof l_root / sizeof l_root[0]) - 2)   /* without the two RESTART lines */
 static const mline l_sound[] = {
     { "MUSIC VOLUME", L_VOL, VOL_MUSIC }, { "EFFECTS VOLUME", L_VOL, VOL_SFX },
     { "CUSTOM SOUNDTRACK", L_PAGE, VP_SOUNDTRACK },
@@ -130,12 +132,6 @@ static const mline l_display[] = {
 static const mline l_perf[] = {
     { NULL, L_OPT, OPT_VSYNC }, { NULL, L_OPT, OPT_PERF_FPS }, { NULL, L_OPT, OPT_PERF_FRAMETIME },
     { NULL, L_OPT, OPT_PERF_SPEED },
-};
-/* LANGUAGE applies at start: once changed, RESTART NOW / RESTART LATER */
-static const mline l_lang[] = { { "LANGUAGE", L_LANG, 0 } };
-static const mline l_lang_changed[] = {
-    { "LANGUAGE", L_LANG, 0 }, { "RESTART NOW", L_ACTION, ACT_RESTART_NOW },
-    { "RESTART LATER", L_ACTION, ACT_RESTART_LATER },
 };
 static mline l_cheats[N_CHEATS + 1];
 static const mline l_controls[] = { { NULL, L_OPT, OPT_CONTROL_SCHEME }, { NULL, L_OPT, OPT_KEY_SCHEME },
@@ -180,12 +176,11 @@ static const mline l_quit[] = { { "NO", L_ACTION, ACT_NO }, { "YES", L_ACTION, A
 static const mline l_restart[] = { { "NO", L_ACTION, ACT_NO }, { "YES", L_ACTION, ACT_RESTART_YES } };
 
 static mpage g_pages[VP_COUNT] = {
-    [VP_ROOT]    = { "RECOMP OPTIONS", -1, l_root, (int)(sizeof l_root / sizeof l_root[0]) },
+    [VP_ROOT]    = { "RECOMP OPTIONS", -1, l_root, N_ROOT },
     [VP_SOUND]   = { "SOUND", VP_ROOT, l_sound, 3 },
     [VP_SOUNDTRACK] = { "CUSTOM SOUNDTRACK", VP_SOUND, l_soundtrack, 2 },
     [VP_DISPLAY] = { "RENDERING", VP_ROOT, l_display, (int)(sizeof l_display / sizeof l_display[0]) },
     [VP_PERF]    = { "PERFORMANCE", VP_ROOT, l_perf, 4 },
-    [VP_LANG]    = { "LANGUAGE", VP_ROOT, l_lang, 1 },
     [VP_CONTROLS] = { "CONTROLS", VP_ROOT, l_controls, 6 },
     [VP_PADVIEW] = { "CONTROLLER LAYOUT", VP_CONTROLS, l_padview, 1 },
     [VP_OVERVIEW] = { "CONTROL OVERVIEW", VP_CONTROLS, l_overview, 0 },
@@ -219,6 +214,7 @@ static const char g_lang_code[] = "efgisprnc";
 static const char *const g_lang_name[] = { "ENGLISH", "FRANCAIS", "DEUTSCH", "ITALIANO", "ESPANOL", "POLSKI",
                                            "RUSSKIJ", "NIHONGO", "ZHONGWEN" };
 static int g_lang_have[N_LANG], g_lang_start = -1, g_lang_sel;
+static int g_lang_later;   /* RESTART LATER: the RESTART lines hidden until RECOMP OPTIONS opens again */
 
 static uint32_t fe(void) { return wr_rd32(FE_PTR); }
 static uint32_t port_page(uint32_t f) { return f + FE_PAGES + PORT_PAGE * PAGE_SIZE; }
@@ -271,6 +267,7 @@ static void lang_step(int d)
         if (g_lang_have[g_lang_sel])
             break;
     }
+    g_lang_later = 0;
     char v[2] = { g_lang_code[g_lang_sel], 0 };
     wr_reg_set_str(REG_GTA2 "\\Option", "language", v);
 }
@@ -335,7 +332,7 @@ static void line_value(const mline *l, char *v, size_t cap)
         break;
     }
     case L_MTMODE:
-        snprintf(v, cap, "%s", strcmp(wr_settings_get("mixtape_mode", "order"), "shuffle") ? "PLAY IN ORDER" : "SHUFFLE");
+        snprintf(v, cap, "%s", strcmp(wr_settings_get("mixtape_mode", "order"), "shuffle") ? "IN ORDER" : "SHUFFLE");
         break;
     case L_OVR:
         if (gta2_overview_is_head(l->arg))
@@ -493,8 +490,7 @@ void gta2_menu_background(void)
 static void lang_page_update(void)
 {
     int changed = g_lang_start >= 0 && g_lang_sel != g_lang_start;
-    g_pages[VP_LANG].l = changed ? l_lang_changed : l_lang;
-    g_pages[VP_LANG].n = changed ? 3 : 1;
+    g_pages[VP_ROOT].n = N_ROOT + (changed && !g_lang_later ? 2 : 0);
 }
 
 /* Y (pad) / Home (keyboard): every line of the page back to its default */
@@ -731,7 +727,11 @@ static void menu_keys(X86Ctx *ctx, uint32_t f, int left, int right, int up, int 
         } else if (l->kind == L_ACTION && l->arg == ACT_RESTART_NOW) {
             wr_restart();
         } else if (l->kind == L_ACTION && l->arg == ACT_RESTART_LATER) {
-            go_back(ctx, f);
+            g_lang_later = 1;   /* asked again the next time RECOMP OPTIONS opens */
+            for (int i = 0; i < N_ROOT; i++)
+                if (l_root[i].kind == L_LANG)
+                    g_cur = i;
+            wr_wr32(FE_SOUND, SND_SELECT);
         } else if (l->kind == L_SHPRESET) {
             gta2_shader_browse_open();
             build_browse_page();
@@ -824,6 +824,7 @@ int gta2_menu_input(X86Ctx *ctx)
             uint32_t a = PORT_PAGE;
             call_this(ctx, FN_GOTO_PAGE, f, 1, &a);
             lang_init();
+        g_lang_later = 0;
             g_vp = VP_EXIT;
             g_cur = g_top = 0;   /* NO */
             g_last_page = PORT_PAGE;
@@ -860,6 +861,7 @@ int gta2_menu_input(X86Ctx *ctx)
     }
     if (g_last_page != PORT_PAGE) {   /* just entered from the main menu */
         lang_init();
+        g_lang_later = 0;
         g_vp = VP_ROOT;
         g_cur = g_top = 0;
         g_last_page = PORT_PAGE;
@@ -1002,8 +1004,6 @@ void gta2_menu_draw(X86Ctx *ctx)
         put_text(ctx, "...", xl, Y_FIRST + VISIBLE * Y_STEP - 6, font, SCALE);
     if (g_vp == VP_SHADERS && gta2_shader_hint())
         put_text(ctx, gta2_shader_hint(), xl, Y_FIRST + 4 * Y_STEP, font, SCALE);
-    if (g_vp == VP_LANG && g_lang_sel != g_lang_start)
-        put_text(ctx, "THE NEW LANGUAGE NEEDS A RESTART", X_LABEL, Y_FIRST + 4 * Y_STEP, font, SCALE);
 }
 
 /* After the game read its Debug flags at start: the saved cheats. */
@@ -1097,6 +1097,7 @@ void gta2_pause_tick(X86Ctx *ctx)
         if (wr_rd32(g) != 2)
             return;   /* the game would not pause (a state change in progress) */
         lang_init();
+        g_lang_later = 0;
         build_cheat_page();
         g_pause_open = 1;
         g_host = HOST_PAUSE;

@@ -4,7 +4,7 @@
  *
  * Music: every folder below media/ that holds music is one album (winrecomp
  * media_scan: MP3 / FLAC / WAV / Ogg, .m3u order). SOUND options: SOURCE =
- * ALL ALBUMS or one album, PLAYBACK MODE = PLAY IN ORDER / SHUFFLE
+ * ALL ALBUMS or one album, PLAYBACK MODE = IN ORDER / SHUFFLE
  * (saves/settings.ini mixtape_source = all | <album path>, mixtape_mode =
  * order | shuffle).
  * Like the game's own stations it plays on while nobody listens: leaving it

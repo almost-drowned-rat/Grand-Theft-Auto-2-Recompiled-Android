@@ -35,7 +35,7 @@
 
 typedef struct {
     const GtaLauncherConfig *cfg;
-    /* root = the game's folder, WR_ROOT (the AppImage's folder - writable: game/, saves/, data/, media/ live here);
+    /* root = the game's folder, WR_ROOT (the AppImage's folder - writable: game/, saves/, data/, media/, shader/ live here);
      * tools = data/tools, the payload unpacked; work = data/build/work, the lifted C; obj = data/build/obj;
      * game = root/game, the game's files from the installer */
     char root[LP], tools[LP], data[LP], build[LP], work[LP], obj[LP], game[LP];
@@ -1259,13 +1259,13 @@ static SDL_EnumerationResult SDLCALL find_cb(void *u, const char *dir, const cha
     return SDL_ENUM_SUCCESS;
 }
 
-/* an installed GTA 2 beside the AppImage: a folder there (not the game's own game/ data/ saves/ media/) with
+/* an installed GTA 2 beside the AppImage: a folder there (not the game's own game/ data/ saves/ media/ shader/) with
  * gta2.exe in it or one level below (setup_build.py looks up to 3 levels down and checks it) */
 typedef struct { L *l; int depth; char found[LP]; } FindGame;
 
 static SDL_EnumerationResult SDLCALL game_dir_cb(void *u, const char *dir, const char *name)
 {
-    static const char *const own[] = { "game", "data", "saves", "media" };
+    static const char *const own[] = { "game", "data", "saves", "media", "shader" };
     FindGame *g = (FindGame *)u;
     FindFile f;
     char p[LP];
@@ -1487,7 +1487,14 @@ int gta_launcher_main(const GtaLauncherConfig *cfg, int argc, char **argv)
     join(l.obj, sizeof l.obj, l.build, "obj");
     join(l.game, sizeof l.game, l.root, "game");
     snprintf(l.jobs, sizeof l.jobs, "%d", compile_jobs());
-    SDL_CreateDirectory(l.data);
+    {   /* the whole layout from the first start (maintainer 2026-11-26): game/ saves/ data/ media/ shader/ */
+        static const char *const dirs[] = { "game", "saves", "data", "media", "shader" };
+        char d[LP];
+        for (size_t i = 0; i < sizeof dirs / sizeof *dirs; i++) {
+            join(d, sizeof d, l.root, dirs[i]);
+            SDL_CreateDirectory(d);
+        }
+    }
     l.log_mx = SDL_CreateMutex();
     l.proc_mx = SDL_CreateMutex();
     join(logp, sizeof logp, l.data, "launcher.log");

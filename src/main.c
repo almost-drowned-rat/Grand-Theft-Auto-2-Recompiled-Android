@@ -97,9 +97,19 @@ int main(int argc, char **argv)
     wr_set_thread_hook(gta2_thread_hook);
     gta2_registry_defaults();
     opt_load_all();   /* RECOMP OPTIONS from settings.ini (sets the gameplay width) */
-    {   /* the player's shader packs: media/shaders -> data/shaders (a thread of its own) */
-        char ms[1100], ds[1100];
-        snprintf(ms, sizeof ms, "%s/shaders", g_wr_paths.media);
+    {   /* the player's shader packs: <root>/shader -> data/shaders (a thread of its own); <root>/shader was
+         * media/shaders up to 0.7.0 - an old one is moved over once (maintainer 2026-11-26) */
+        char ms[1100], ds[1100], old[1100];
+        snprintf(ms, sizeof ms, "%s/shader", g_wr_paths.root);
+        snprintf(old, sizeof old, "%s/shaders", g_wr_paths.media);
+        SDL_PathInfo pi;
+        if (!SDL_GetPathInfo(ms, &pi) && SDL_GetPathInfo(old, &pi) && pi.type == SDL_PATHTYPE_DIRECTORY) {
+            if (SDL_RenamePath(old, ms))
+                wr_log("shaders: moved media/shaders to shader/");
+            else
+                wr_log("shaders: could not move media/shaders to shader/: %s", SDL_GetError());
+        }
+        SDL_CreateDirectory(ms);
         snprintf(ds, sizeof ds, "%s/shaders", g_wr_paths.data);
         shader_pack_show_bezels(1);   /* as the N64 recomps: bezel / border listed too */
         shader_pack_start(ms, ds);

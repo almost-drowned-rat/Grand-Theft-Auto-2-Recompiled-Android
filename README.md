@@ -63,13 +63,14 @@ original. After an app update the game is built again from that copy - no need t
 - **Controls:** any gamepad (also the Odin's built-in controls) or the **touch buttons**; rumble on the pad you used
   last, or the device's own vibration.
 - **BACK** (the system back gesture / button) opens the side menu: **Back to the game**, **Controls** (touch
-  buttons, layout, size, opacity), **Settings** (Saves: import / export, Export log, Graphics driver).
+  buttons, layout, size, opacity), **Settings** (Saves: import / export, Export log, Soundtracks, Shaders, Graphics driver).
 - **RECOMP OPTIONS** in the game's own options menu: render resolution, texture filtering, frame rate (30 / 60 /
   120 interpolated), aspect ratio (4:3 / 16:9 / 16:10 / 21:9, real widescreen), V-Sync, FPS counter, the old GTA 2
   Manager's gameplay settings, cheats, language, controls, MIXTAPE (your own music as a radio station: put album
-  folders into `media/`).
+  folders into `media/`), shaders (RetroArch slang shader packs: BACK > Settings > Shaders imports a .zip or a
+  folder into `shader/`).
 - The game's folder on the device: `Android/data/io.github.almostdrownedrat.gta2/files/` - `game/` (the game's
-  files), `saves/`, `data/` (logs: `data/gta2.log`), `media/` (your music).
+  files), `saves/`, `data/` (logs: `data/gta2.log`), `media/` (your music), `shader/` (your shader packs).
 
 ## Building
 

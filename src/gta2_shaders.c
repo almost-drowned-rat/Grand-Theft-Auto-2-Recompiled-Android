@@ -4,7 +4,7 @@
  *
  *   SHADER   OFF / ON           settings.ini shader_on
  *   PRESET   the preset in use  settings.ini shader_preset (path of the .slangp)
- * The browser lists the packs of media/shaders (extracted to data/shaders by
+ * The browser lists the packs of <root>/shader (extracted to data/shaders by
  * shader_pack_start at start-up): folders first, presets with their pass
  * count, ".." to go up, NONE on top.
  */

@@ -40,13 +40,15 @@
     "game": [{ "path": "{install}/game" }],
     "saves": [{ "path": "{install}/saves" }],
     "logs": [{ "path": "{install}/data" }],
-    "media": [{ "path": "{install}/media" }]
+    "media": [{ "path": "{install}/media" }],
+    "shader": [{ "path": "{install}/shader" }]
   },
   "system": {
     "linux": { "glibc": "2.35", "graphics": { "vulkan": "1.1" } }
   },
   "actions": [
     { "id": "saves", "label": "Saves", "help": "Your saved games, the game's settings and its registry.", "open": "saves" },
-    { "id": "media", "label": "Music and shaders", "help": "Your own albums for the MIXTAPE radio, and slang shader packs (media/shaders).", "open": "media" }
+    { "id": "media", "label": "Music", "help": "Your own albums for the MIXTAPE radio.", "open": "media" },
+    { "id": "shader", "label": "Shaders", "help": "RetroArch slang shader packs (a .zip or a folder each).", "open": "shader" }
   ]
 }
