@@ -180,7 +180,7 @@ final class VistaSetupView extends View {
             case C_DRIVER: modal = M_DRIVER; focus = C_ITEM; break;
             case C_GO:
                 if (state == DONE) { host.play(); break; }
-                if (rowName[ROW_INSTALLER].isEmpty()) {
+                if (rowName[ROW_INSTALLER].isEmpty() && !gameFiles) {
                     message("Please choose your " + GAME + " installer (GTA2.exe, the 2004 Rockstar freeware release) "
                             + "with Browse..., or an installed GTA 2 folder with Folder...", C_BROWSE0);
                     break;
@@ -259,6 +259,12 @@ final class VistaSetupView extends View {
 
     /** A line above the rows' intro (why the setup shows again), or "". */
     void setNote(String n) { note = n == null ? "" : n; invalidate(); }
+
+    /** The game's files are in the app's game folder already (a rebuild needs no installer; one picked replaces
+     *  them). */
+    void setGameFiles(boolean have) { gameFiles = have; invalidate(); }
+    private boolean gameFiles;
+    private static final String GAME_FILES = "Game files: already installed";
     private String note = "";
 
     private void tick() {
@@ -368,7 +374,13 @@ final class VistaSetupView extends View {
             case INSTALLING: return "The game is being built - this happens only once. Please keep the "
                                     + "app open; the device may get warm.";
             case DONE: return GAME + " is installed. Play starts the game - from now on the app starts it directly.";
-            default: return (note.isEmpty() ? "" : note + " ") + "Choose your " + GAME + " installer (GTA2.exe, the 2004 "
+            default:
+                if (gameFiles)
+                    return (note.isEmpty() ? "" : note + " ") + "The game files are already installed on this device: "
+                           + "Install builds the game again from them. To replace them, choose your " + GAME
+                           + " installer (GTA2.exe) with Browse... or an installed GTA 2 folder with Folder... The "
+                           + "translations pack (more languages) is optional.";
+                return (note.isEmpty() ? "" : note + " ") + "Choose your " + GAME + " installer (GTA2.exe, the 2004 "
                             + "Rockstar freeware release, ~360 MB) with Browse..., or a folder where GTA 2 is installed "
                             + "with Folder..., then Install. The game is built from it once, on this device (your files "
                             + "are only read). The translations pack (more languages) is optional.";
@@ -417,7 +429,8 @@ final class VistaSetupView extends View {
             // the first row: Browse... (GTA2.exe) and Folder... (an installed GTA 2)
             float right = r == ROW_INSTALLER ? R - 2 * browseW - 8 * s : R;
             RectF f = new RectF(L + labelW, ry, right - browseW - 8 * s, ry + fh);
-            field(c, f, rowName[r], r == 0 ? "GTA2.exe or a GTA 2 folder" : "(none)", form);
+            String shownName = r == ROW_INSTALLER && rowName[r].isEmpty() && gameFiles ? GAME_FILES : rowName[r];
+            field(c, f, shownName, r == 0 ? "GTA2.exe or a GTA 2 folder" : "(none)", form);
             if (r == ROW_INSTALLER)
                 button(c, new RectF(R - browseW, ry, R, ry + fh), "Folder...", C_FOLDER0, form, false);
             RectF b = new RectF(right - browseW, ry, right, ry + fh);

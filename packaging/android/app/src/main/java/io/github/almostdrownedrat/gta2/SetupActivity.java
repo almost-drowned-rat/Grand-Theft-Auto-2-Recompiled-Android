@@ -26,7 +26,12 @@ public class SetupActivity extends Activity implements VistaSetupView.Host {
         mView = new VistaSetupView(this, this, maybeAdreno());
         setContentView(mView);
         android.content.SharedPreferences pr = getSharedPreferences("setup", MODE_PRIVATE);
+        // the game's files kept from the first setup (<ext>/game: real copies): a rebuild needs no source again -
+        // the remembered installer / folder is not offered then (picking one replaces the game files)
+        boolean gameFiles = SetupRunner.hasGameFiles(this);
+        mView.setGameFiles(gameFiles);
         for (int row = 0; row < VistaSetupView.ROWS; row++) {
+            if (row == VistaSetupView.ROW_INSTALLER && gameFiles) continue;
             String u = pr.getString("row" + row, null);
             if (u == null) continue;
             Uri uri = Uri.parse(u);
@@ -37,7 +42,8 @@ public class SetupActivity extends Activity implements VistaSetupView.Host {
             mView.setRow(row, tree ? treeName(uri) : displayName(uri));
         }
         if (SetupRunner.gameLibrary(this).isFile())
-            mView.setNote("The app was updated: the game is built again from your installer.");
+            mView.setNote(gameFiles ? "The app was updated: the game is built again."
+                                    : "The app was updated: the game is built again from your installer or folder.");
         mView.requestFocus();
         if (Build.VERSION.SDK_INT >= 33)        // the back gesture (enableOnBackInvokedCallback: no onBackPressed)
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(

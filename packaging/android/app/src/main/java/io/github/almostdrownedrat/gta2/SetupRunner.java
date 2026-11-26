@@ -11,6 +11,7 @@
 //   Unpacking the game files   setup_build.py extract --installer (unshield = libunshield_exe.so) / --folder
 //                              (exit 3: not the installer / no GTA 2 in the folder)
 //                              -> <external files>/game
+//   (a rebuild: no new source)  <ext>/game kept - setup_build.py check (exit 0: supported); no copy, no extract
 //   Translating                setup_build.py lift (python = libpython_exe.so) -> <files>/setup/work/gen
 //   Compiling, Linking         build.txt (clang = libclang_exe.so, lld through libld_exe.so) -> libgta2_game.so
 //   Graphics driver            the player's Turnip .adpkg.zip kept + made the one in use (the BACK menu's slots)
@@ -95,6 +96,14 @@ final class SetupRunner implements Runnable {
         } catch (IOException e) {
             return "";
         }
+    }
+
+    /** The game's files the first setup left in <external files>/game (real copies: no link to the source). */
+    static boolean hasGameFiles(Context c) {
+        File ext = c.getExternalFilesDir(null);
+        if (ext == null) return false;
+        File g = new File(ext, "game");
+        return new File(g, "gta2.exe").isFile() || new File(g, "GTA2.exe").isFile();
     }
 
     static File gameLibrary(Context c) { return new File(c.getFilesDir(), "bin/libgta2_game.so"); }
@@ -182,9 +191,14 @@ final class SetupRunner implements Runnable {
 
     private void work() throws Exception {
         boolean trans = choice.translations != null, drv = choice.driver != null;
-        // the bar: tools 2 %, installer copy 3 %, unpack 5 %, translate 25 %, compile 62 %, link 1 %, driver 1 %
-        // (+ the translations 0.2 %); the rest scaled to 1
-        float tTools = 2, tCopy = 3, tExtract = 5, tLift = 25, tCc = 62, tLink = 1, tDrv = drv ? 1 : 0,
+        // no new source: a rebuild from the game files already in <ext>/game (app update, Install again)
+        boolean reuse = choice.installer == null && choice.folder == null;
+        if (reuse && !hasGameFiles(ctx))
+            throw new Failed("Please choose your GTA 2 installer (GTA2.exe) with Browse..., or an installed GTA 2 "
+                             + "folder with Folder...", true);
+        // the bar: tools 2 %, installer copy 3 %, unpack 5 % (a rebuild: check 1 %), translate 25 %, compile 62 %,
+        // link 1 %, driver 1 % (+ the translations 0.2 %); the rest scaled to 1
+        float tTools = 2, tCopy = reuse ? 0 : 3, tExtract = reuse ? 1 : 5, tLift = 25, tCc = 62, tLink = 1, tDrv = drv ? 1 : 0,
               tTrans = trans ? 0.2f : 0;
         float sum = tTools + tCopy + tExtract + tLift + tCc + tLink + tDrv + tTrans, at = 0;
 
@@ -195,7 +209,7 @@ final class SetupRunner implements Runnable {
         long treeBytes = 0;
         for (TreeFile t : tree) treeBytes += t.size;
         // room: the installer's (or the folder's) copy, the unpacked game and the build (~1.5 GB at its largest)
-        long need = (choice.folder != null ? treeBytes : size(choice.installer)) * 2 + (1500L << 20);
+        long need = (reuse ? 0 : choice.folder != null ? treeBytes : size(choice.installer)) * 2 + (1500L << 20);
         if (files.getUsableSpace() < need)
             throw new Failed("Not enough free storage: the setup needs about " + ((need + (1L << 29)) >> 30)
                              + " GB free (" + (files.getUsableSpace() >> 20) + " MB free now).");
@@ -219,9 +233,11 @@ final class SetupRunner implements Runnable {
         new File(S, "tmp").mkdirs();
         at += tTools;
 
-        // 2. the installer - or the installed folder
+        // 2. the installer - or the installed folder (a rebuild: nothing to copy)
         File exe = new File(S, "GTA2.exe"), folder = new File(S, "folder");
-        if (choice.folder != null) {
+        if (reuse) {
+            // nothing
+        } else if (choice.folder != null) {
             phase("Copying the game folder", at / sum, tCopy / sum, 0);
             copyTree(tree, treeBytes, folder, f -> say("Copying the game folder", f));
         } else {
@@ -230,39 +246,51 @@ final class SetupRunner implements Runnable {
         }
         at += tCopy;
 
-        // 3. the game's files out of the installer (setup_build.py extract; exit 3: not the freeware installer)
+        // 3. the game's files out of the installer / folder (setup_build.py extract; exit 3: not GTA 2) - or, a rebuild,
+        // the kept ones checked (setup_build.py check)
         File tools = new File(S, "tools"), work = new File(S, "work"), gameDir = new File(ext, "game");
         deleteTree(work);
         work.mkdirs();
-        phase("Unpacking the game files", at / sum, tExtract / sum, 0);
-        // the old folder must go first: files the app may not delete - copied there by a file manager or adb as
-        // another user - stop the setup with a sentence, not a bare "failed"
-        deleteTree(gameDir);
-        if (gameDir.exists())
-            throw new Failed("The old folder " + gameDir.getPath() + " cannot be replaced (its files belong to another "
-                             + "app). Please delete it with a file manager or a computer, then start the setup again.");
-        if (!ext.canWrite())
-            throw new Failed("The game folder " + ext.getPath() + " cannot be written. Please delete it with a file "
-                             + "manager or a computer, then start the setup again.");
         int rc;
-        if (choice.folder != null) {
-            rc = python(null, new File(tools, "setup_build.py").getPath(), "extract",
-                        "--folder", folder.getPath(), "--work", work.getPath(), "--game", gameDir.getPath());
-            deleteTree(folder);
-            if (rc == WRONG_FILE)
-                throw new Failed("That folder holds no GTA 2 (the 2004 freeware release: gta2.exe with its data folder) "
-                                 + "- please choose it.", true);
+        if (reuse) {
+            // a rebuild: the kept game files checked, never deleted
+            phase("Checking the game files", at / sum, tExtract / sum, 0);
+            rc = python(null, new File(tools, "setup_build.py").getPath(), "check", "--game", gameDir.getPath());
+            if (rc != 0)
+                throw new Failed("The installed game files cannot be used for this version. Please choose your GTA 2 "
+                                 + "installer (GTA2.exe) or an installed GTA 2 folder - they replace them.", true);
         } else {
-            rc = python(null, new File(tools, "setup_build.py").getPath(), "extract",
-                        "--installer", exe.getPath(),
-                        "--unshield", new File(native_, "libunshield_exe.so").getPath(),
-                        "--work", work.getPath(), "--game", gameDir.getPath());
-            exe.delete();
-            if (rc == WRONG_FILE)
-                throw new Failed("That file is not the GTA 2 freeware installer (GTA2.exe, 2004 Rockstar release) - "
-                                 + "please choose it.", true);
+            phase("Unpacking the game files", at / sum, tExtract / sum, 0);
+            // the old folder goes first - only here, where a new source was picked and its extract runs next.
+            // Files the app may not delete (copied there by a file manager or adb as another user) stop the setup
+            // with a sentence, not a bare "failed"
+            deleteTree(gameDir);
+            if (gameDir.exists())
+                throw new Failed("The old folder " + gameDir.getPath() + " cannot be replaced (its files belong to "
+                                 + "another app). Please delete it with a file manager or a computer, then start the "
+                                 + "setup again.");
+            if (!ext.canWrite())
+                throw new Failed("The game folder " + ext.getPath() + " cannot be written. Please delete it with a "
+                                 + "file manager or a computer, then start the setup again.");
+            if (choice.folder != null) {
+                rc = python(null, new File(tools, "setup_build.py").getPath(), "extract",
+                            "--folder", folder.getPath(), "--work", work.getPath(), "--game", gameDir.getPath());
+                deleteTree(folder);
+                if (rc == WRONG_FILE)
+                    throw new Failed("That folder holds no GTA 2 (the 2004 freeware release: gta2.exe with its data "
+                                     + "folder) - please choose it.", true);
+            } else {
+                rc = python(null, new File(tools, "setup_build.py").getPath(), "extract",
+                            "--installer", exe.getPath(),
+                            "--unshield", new File(native_, "libunshield_exe.so").getPath(),
+                            "--work", work.getPath(), "--game", gameDir.getPath());
+                exe.delete();
+                if (rc == WRONG_FILE)
+                    throw new Failed("That file is not the GTA 2 freeware installer (GTA2.exe, 2004 Rockstar release) "
+                                     + "- please choose it.", true);
+            }
+            if (rc != 0) throw new Failed("Unpacking the game files failed" + LOG_HINT);
         }
-        if (rc != 0) throw new Failed("Unpacking the game files failed" + LOG_HINT);
         at += tExtract;
 
         // 4. translate (setup_build.py lift: the game's code -> C in work/gen; a few minutes, the bar by time)
