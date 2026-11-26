@@ -46,11 +46,11 @@ static void ensure_vk(void)
     if (!wr_vk_init(win, vsync))
         return;
     wr_overlay_set_tick_rate(1000.0 / 33.0);   /* one logic tick per 33 ms (docs/re/framerate.md) */
-    const char *preset = getenv("WR_SHADER_PRESET");
-    if ((!preset || !*preset) && wr_settings_get_int("shader_on", 0))
-        preset = wr_settings_get("shader_preset", NULL);   /* SHADERS page */
+    const char *preset = getenv("WR_SHADER_PRESET");   /* dev override, without saved parameters */
     if (preset && *preset)
         sp_set_preset(preset);
+    else
+        gta2_shaders_apply();   /* SHADERS page: the preset AND its saved parameters */
     g_gfx.nearest = wr_vk_sampler(VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
     g_gfx.linear = wr_vk_sampler(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
     g_gfx.vk = 1;
