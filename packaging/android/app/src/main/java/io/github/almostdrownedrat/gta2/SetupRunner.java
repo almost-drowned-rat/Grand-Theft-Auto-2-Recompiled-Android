@@ -5,8 +5,11 @@
 //
 //   Preparing the tools        assets/setup/{python,tools,toolchain}.zip -> <files>/setup/{python,tools,tc}
 //   Copying the installer      the picked document -> <files>/setup/GTA2.exe (a child process cannot open the
-//                              picker's document by path; the copy is deleted once unpacked)
-//   Unpacking the game files   setup_build.py extract (unshield = libunshield_exe.so; exit 3: not the installer)
+//                              picker's document by path; the copy is deleted once unpacked) - or, an installed
+//   / the game folder          GTA 2 folder (a document tree): copied to <files>/setup/folder (its top-level
+//                              saves/ and player/ skipped), deleted once unpacked
+//   Unpacking the game files   setup_build.py extract --installer (unshield = libunshield_exe.so) / --folder
+//                              (exit 3: not the installer / no GTA 2 in the folder)
 //                              -> <external files>/game
 //   Translating                setup_build.py lift (python = libpython_exe.so) -> <files>/setup/work/gen
 //   Compiling, Linking         build.txt (clang = libclang_exe.so, lld through libld_exe.so) -> libgta2_game.so
@@ -57,11 +60,11 @@ final class SetupRunner implements Runnable {
     interface Listener {
         void step(String text, float fraction);     // the whole setup's fraction 0..1
         void done();
-        void failed(String message, boolean wrongFile);   // wrongFile: not the installer - pick again
+        void failed(String message, boolean wrongFile);   // wrongFile: not the installer / folder - pick again
     }
 
     /** What the player chose (null = the optional line empty). */
-    static final class Choice { Uri installer, translations, driver; }
+    static final class Choice { Uri installer, folder, translations, driver; }   // installer or folder (a tree)
 
     private final Context ctx;
     private final Choice choice;
@@ -149,6 +152,7 @@ final class SetupRunner implements Runnable {
         if (!S.isDirectory()) return;
         new File(S, "GTA2.exe").delete();
         new File(S, "GTA2.exe.part").delete();
+        deleteTree(new File(S, "folder"));
         new File(S, "libgta2_game.so").delete();
         File log = new File(S, "setup.log");
         // the failed compilers' messages into the setup's log (the per-file logs go with the build)
@@ -185,8 +189,13 @@ final class SetupRunner implements Runnable {
         float sum = tTools + tCopy + tExtract + tLift + tCc + tLink + tDrv + tTrans, at = 0;
 
         File log = new File(S, "setup.log");
-        // room: the installer's copy, the unpacked game and the build (~1.5 GB at its largest)
-        long need = size(choice.installer) * 2 + (1500L << 20);
+        // the folder's files first (their size: the room needed, the copy's bar)
+        List<TreeFile> tree = new ArrayList<>();
+        if (choice.folder != null) listTree(choice.folder, tree);
+        long treeBytes = 0;
+        for (TreeFile t : tree) treeBytes += t.size;
+        // room: the installer's (or the folder's) copy, the unpacked game and the build (~1.5 GB at its largest)
+        long need = (choice.folder != null ? treeBytes : size(choice.installer)) * 2 + (1500L << 20);
         if (files.getUsableSpace() < need)
             throw new Failed("Not enough free storage: the setup needs about " + ((need + (1L << 29)) >> 30)
                              + " GB free (" + (files.getUsableSpace() >> 20) + " MB free now).");
@@ -210,10 +219,15 @@ final class SetupRunner implements Runnable {
         new File(S, "tmp").mkdirs();
         at += tTools;
 
-        // 2. the installer
-        phase("Copying the installer", at / sum, tCopy / sum, 0);
-        File exe = new File(S, "GTA2.exe");
-        copyUri(choice.installer, exe, f -> say("Copying the installer", f));
+        // 2. the installer - or the installed folder
+        File exe = new File(S, "GTA2.exe"), folder = new File(S, "folder");
+        if (choice.folder != null) {
+            phase("Copying the game folder", at / sum, tCopy / sum, 0);
+            copyTree(tree, treeBytes, folder, f -> say("Copying the game folder", f));
+        } else {
+            phase("Copying the installer", at / sum, tCopy / sum, 0);
+            copyUri(choice.installer, exe, f -> say("Copying the installer", f));
+        }
         at += tCopy;
 
         // 3. the game's files out of the installer (setup_build.py extract; exit 3: not the freeware installer)
@@ -230,14 +244,24 @@ final class SetupRunner implements Runnable {
         if (!ext.canWrite())
             throw new Failed("The game folder " + ext.getPath() + " cannot be written. Please delete it with a file "
                              + "manager or a computer, then start the setup again.");
-        int rc = python(null, new File(tools, "setup_build.py").getPath(), "extract",
+        int rc;
+        if (choice.folder != null) {
+            rc = python(null, new File(tools, "setup_build.py").getPath(), "extract",
+                        "--folder", folder.getPath(), "--work", work.getPath(), "--game", gameDir.getPath());
+            deleteTree(folder);
+            if (rc == WRONG_FILE)
+                throw new Failed("That folder holds no GTA 2 (the 2004 freeware release: gta2.exe with its data folder) "
+                                 + "- please choose it.", true);
+        } else {
+            rc = python(null, new File(tools, "setup_build.py").getPath(), "extract",
                         "--installer", exe.getPath(),
                         "--unshield", new File(native_, "libunshield_exe.so").getPath(),
                         "--work", work.getPath(), "--game", gameDir.getPath());
-        exe.delete();
-        if (rc == WRONG_FILE)
-            throw new Failed("That file is not the GTA 2 freeware installer (GTA2.exe, 2004 Rockstar release) - please "
-                             + "choose it.", true);
+            exe.delete();
+            if (rc == WRONG_FILE)
+                throw new Failed("That file is not the GTA 2 freeware installer (GTA2.exe, 2004 Rockstar release) - "
+                                 + "please choose it.", true);
+        }
         if (rc != 0) throw new Failed("Unpacking the game files failed" + LOG_HINT);
         at += tExtract;
 
@@ -466,6 +490,81 @@ final class SetupRunner implements Runnable {
             if (c != null && c.moveToFirst() && !c.isNull(0)) return c.getLong(0);
         } catch (Exception ignored) { }
         return 0;
+    }
+
+    /** One file of a picked folder: its document, its path below the folder, its size. */
+    private static final class TreeFile {
+        final Uri doc; final String path; final long size;
+        TreeFile(Uri doc, String path, long size) { this.doc = doc; this.path = path; this.size = size; }
+    }
+
+    /** Every file of the document tree (DocumentsContract), the top level's saves/ and player/ left out (the
+     *  player's own saves are not the game's files). */
+    private void listTree(Uri tree, List<TreeFile> out) throws Exception {
+        String root;
+        try {
+            root = android.provider.DocumentsContract.getTreeDocumentId(tree);
+        } catch (Exception e) {
+            throw new Failed("The chosen folder cannot be read - please choose it again with Folder...", true);
+        }
+        listDir(tree, root, "", out);
+    }
+
+    private void listDir(Uri tree, String dirId, String prefix, List<TreeFile> out) throws Exception {
+        check();
+        Uri kids = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(tree, dirId);
+        String[] cols = { android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                          android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                          android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE,
+                          android.provider.DocumentsContract.Document.COLUMN_SIZE };
+        List<String[]> dirs = new ArrayList<>();
+        try (Cursor c = ctx.getContentResolver().query(kids, cols, null, null, null)) {
+            if (c == null) throw new Failed("The chosen folder cannot be read - please choose it again with Folder...", true);
+            while (c.moveToNext()) {
+                String id = c.getString(0), name = c.getString(1), mime = c.getString(2);
+                long size = c.isNull(3) ? 0 : c.getLong(3);
+                if (name == null || name.isEmpty() || name.equals(".") || name.equals("..") || name.contains("/")
+                    || name.indexOf('\\') >= 0) continue;
+                if (android.provider.DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
+                    if (prefix.isEmpty() && (name.equalsIgnoreCase("saves") || name.equalsIgnoreCase("player"))) continue;
+                    dirs.add(new String[] { id, prefix + name + "/" });
+                } else {
+                    out.add(new TreeFile(android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, id),
+                                         prefix + name, size));
+                }
+            }
+        } catch (SecurityException e) {
+            throw new Failed("The app may no longer read the chosen folder - please choose it again with Folder...", true);
+        }
+        for (String[] d : dirs) listDir(tree, d[0], d[1], out);
+    }
+
+    /** The listed files into dir (the bar by bytes). */
+    private void copyTree(List<TreeFile> files, long total, File dir, Frac f) throws Exception {
+        deleteTree(dir);
+        dir.mkdirs();
+        String root = dir.getCanonicalPath() + File.separator;
+        long done = 0;
+        byte[] buf = new byte[1 << 20];
+        for (TreeFile t : files) {
+            File to = new File(dir, t.path);
+            if (!to.getCanonicalPath().startsWith(root)) continue;
+            to.getParentFile().mkdirs();
+            try (InputStream in = ctx.getContentResolver().openInputStream(t.doc);
+                 OutputStream o = new FileOutputStream(to)) {
+                if (in == null) throw new Failed("A file of the chosen folder cannot be read (" + t.path + ").");
+                int r;
+                while ((r = in.read(buf)) > 0) {
+                    o.write(buf, 0, r);
+                    done += r;
+                    if (total > 0) f.at((float) done / total);
+                    check();
+                }
+            } catch (SecurityException e) {
+                throw new Failed("The app may no longer read the chosen folder - please choose it again with Folder...",
+                                 true);
+            }
+        }
     }
 
     private void copyUri(Uri u, File to, Frac f) throws Exception {

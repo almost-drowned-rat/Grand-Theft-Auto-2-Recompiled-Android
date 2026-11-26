@@ -1,5 +1,5 @@
 // SetupActivity - the app's first screen: the setup in the Windows Vista look (VistaSetupView), agent L 2026-11-23.
-// The game is built on the device from the player's GTA 2 installer (SetupRunner); once built by this APK's kit, the app goes
+// The game is built on the device from the player's GTA 2 installer or installed GTA 2 folder (SetupRunner); once built by this APK's kit, the app goes
 // straight to the game (Gta2Activity). The chosen files are remembered (persisted read permission) for a rebuild.
 // SPDX-License-Identifier: GPL-3.0-or-later
 package io.github.almostdrownedrat.gta2;
@@ -30,9 +30,11 @@ public class SetupActivity extends Activity implements VistaSetupView.Host {
             String u = pr.getString("row" + row, null);
             if (u == null) continue;
             Uri uri = Uri.parse(u);
-            if (!canRead(uri)) continue;
+            boolean tree = row == VistaSetupView.ROW_INSTALLER && pr.getBoolean("row" + row + "folder", false);
+            if (!(tree ? canReadTree(uri) : canRead(uri))) continue;
             mRows[row] = uri;
-            mView.setRow(row, displayName(uri));
+            if (tree) mFolder = true;
+            mView.setRow(row, tree ? treeName(uri) : displayName(uri));
         }
         if (SetupRunner.gameLibrary(this).isFile())
             mView.setNote("The app was updated: the game is built again from your installer.");
@@ -76,9 +78,29 @@ public class SetupActivity extends Activity implements VistaSetupView.Host {
     }
 
     @Override
+    public void pickFolder(int row) {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(i, PICK_TREE);
+    }
+    private static final int PICK_TREE = 200;
+
+    @Override
     protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
         if (result != RESULT_OK || data == null || data.getData() == null) return;
+        if (request == PICK_TREE) {         // an installed GTA 2 folder in the installer's row
+            Uri u = data.getData();
+            try {
+                getContentResolver().takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            } catch (SecurityException ignored) { }
+            getSharedPreferences("setup", MODE_PRIVATE).edit().putString("row0", u.toString())
+                    .putBoolean("row0folder", true).apply();
+            mRows[VistaSetupView.ROW_INSTALLER] = u;
+            mFolder = true;
+            mView.setRow(VistaSetupView.ROW_INSTALLER, treeName(u));
+            return;
+        }
         int row = request - 100;
         if (row < 0 || row > VistaSetupView.PICK_DRIVER) return;
         Uri u = data.getData();
@@ -86,8 +108,10 @@ public class SetupActivity extends Activity implements VistaSetupView.Host {
             try {
                 getContentResolver().takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION);
             } catch (SecurityException ignored) { }      // (a provider without persistable grants: this run only)
-            getSharedPreferences("setup", MODE_PRIVATE).edit().putString("row" + row, u.toString()).apply();
+            getSharedPreferences("setup", MODE_PRIVATE).edit().putString("row" + row, u.toString())
+                    .putBoolean("row" + row + "folder", false).apply();
         }
+        if (row == VistaSetupView.ROW_INSTALLER) mFolder = false;
         if (row == VistaSetupView.PICK_DRIVER) mDriver = u; else mRows[row] = u;
         mView.setRow(row, displayName(u));
     }
@@ -97,17 +121,36 @@ public class SetupActivity extends Activity implements VistaSetupView.Host {
         catch (Exception e) { return false; }
     }
 
+    private boolean canReadTree(Uri tree) {
+        try (Cursor c = getContentResolver().query(android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(
+                tree, android.provider.DocumentsContract.getTreeDocumentId(tree)), null, null, null, null)) {
+            return c != null;
+        } catch (Exception e) { return false; }
+    }
+
+    /** a picked folder's own name */
+    private String treeName(Uri tree) {
+        try {
+            return displayName(android.provider.DocumentsContract.buildDocumentUriUsingTree(
+                    tree, android.provider.DocumentsContract.getTreeDocumentId(tree)));
+        } catch (Exception e) {
+            return displayName(tree);
+        }
+    }
+
     // ---- the run ---------------------------------------------------------------------------------------------------
 
     private final Uri[] mRows = new Uri[VistaSetupView.ROWS];
     private Uri mDriver;
+    private boolean mFolder;            // the installer's row holds a folder (a document tree), not GTA2.exe
     private SetupRunner mRunner;
     private Thread mThread;
 
     @Override
     public void install() {
         SetupRunner.Choice ch = new SetupRunner.Choice();
-        ch.installer = mRows[VistaSetupView.ROW_INSTALLER];
+        if (mFolder) ch.folder = mRows[VistaSetupView.ROW_INSTALLER];
+        else ch.installer = mRows[VistaSetupView.ROW_INSTALLER];
         ch.translations = mRows[VistaSetupView.ROW_TRANS];
         ch.driver = mView.driverFromFile() ? mDriver : null;
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);

@@ -4,7 +4,8 @@
 // grow, flip a white corner, a cyan glow pulses behind them), the glossy green progress bar with a white glint
 // sweeping over its filled part, glossy rounded buttons, a Vista-style question box.
 //
-// The rows: the GTA 2 installer (the player's own GTA2.exe, the 2004 Rockstar freeware release), the translations pack
+// The rows: the GTA 2 installer (the player's own GTA2.exe, the 2004 Rockstar freeware release) or an already
+// installed GTA 2 folder (Folder...: a document tree), the translations pack
 // (optional, more languages) - and, Android only, the graphics driver: no driver ships with the app, so
 // two choices - the system driver (the default) or a Turnip driver from the player's own .adpkg.zip (Snapdragon only;
 // kept in the same slots as the BACK menu's Graphics driver page). Quit / Back / the frame's X during the installation
@@ -38,6 +39,7 @@ final class VistaSetupView extends View {
     /** What the activity does for the view. */
     interface Host {
         void pickFile(int row);         // ROW_INSTALLER / ROW_TRANS / PICK_DRIVER
+        void pickFolder(int row);       // ROW_INSTALLER: an installed GTA 2 folder instead of GTA2.exe
         void quit();
         void play();
         void install();                 // Install pressed (the installer chosen): the activity starts SetupRunner
@@ -50,7 +52,7 @@ final class VistaSetupView extends View {
     private static final int M_NONE = 0, M_QUIT = 1, M_MESSAGE = 2, M_DRIVER = 3;
 
     // control ids
-    private static final int C_BROWSE0 = 0, C_BROWSE1 = 1, C_DRIVER = 3, C_GO = 4, C_QUIT = 5,
+    private static final int C_BROWSE0 = 0, C_BROWSE1 = 1, C_FOLDER0 = 2, C_DRIVER = 3, C_GO = 4, C_QUIT = 5,
             C_CLOSE = 6, C_YES = 10, C_NO = 11, C_OK = 12, C_CANCEL = 13, C_ITEM = 100;
 
     private final Host host;
@@ -61,7 +63,7 @@ final class VistaSetupView extends View {
     private int state = FORM, modal = M_NONE;
     private String modalText = "";
     private final String[] rowName = { "", "" };
-    private static final String[] ROW_LABEL = { "GTA 2 installer:", "Translations (optional):" };
+    private static final String[] ROW_LABEL = { "GTA 2 installer or folder:", "Translations (optional):" };
 
     // the graphics driver row
     private final boolean adreno;
@@ -174,12 +176,13 @@ final class VistaSetupView extends View {
         if (c == null || !c.enabled) return;
         switch (id) {
             case C_BROWSE0: case C_BROWSE1: host.pickFile(id - C_BROWSE0); break;
+            case C_FOLDER0: host.pickFolder(ROW_INSTALLER); break;
             case C_DRIVER: modal = M_DRIVER; focus = C_ITEM; break;
             case C_GO:
                 if (state == DONE) { host.play(); break; }
                 if (rowName[ROW_INSTALLER].isEmpty()) {
                     message("Please choose your " + GAME + " installer (GTA2.exe, the 2004 Rockstar freeware release) "
-                            + "with Browse...", C_BROWSE0);
+                            + "with Browse..., or an installed GTA 2 folder with Folder...", C_BROWSE0);
                     break;
                 }
                 startInstall();
@@ -349,17 +352,26 @@ final class VistaSetupView extends View {
 
     private float bodyHeight() {
         // intro (up to 3 lines) + the rows + driver button + note + bar + the status line
-        return 14 + 3 * 16 + 10 + ROWS * ROW + 6 + 30 + 20 + 12 + 18 + 8 + 16 + 14;
+        return 14 + introLines() * 16 + 10 + ROWS * ROW + 6 + 30 + 20 + 12 + 18 + 8 + 16 + 14;
+    }
+
+    /** The intro's lines at the layout's own scale (the body grows with them: no text cut off). */
+    private int introLines() {
+        Paint m = new Paint(Paint.ANTI_ALIAS_FLAG);
+        m.setTypeface(regular);
+        m.setTextSize(11.5f);
+        return Math.max(3, Math.min(6, wrap(m, intro(), DW - 2 * FRAME - 2 * PAD, 6).size()));
     }
 
     private String intro() {
         switch (state) {
-            case INSTALLING: return "The game is being built from your installer - this happens only once. Please keep the "
+            case INSTALLING: return "The game is being built - this happens only once. Please keep the "
                                     + "app open; the device may get warm.";
             case DONE: return GAME + " is installed. Play starts the game - from now on the app starts it directly.";
             default: return (note.isEmpty() ? "" : note + " ") + "Choose your " + GAME + " installer (GTA2.exe, the 2004 "
-                            + "Rockstar freeware release, ~360 MB), then Install. The game is built from it once, on this "
-                            + "device (the installer is only read). The translations pack (more languages) is optional.";
+                            + "Rockstar freeware release, ~360 MB) with Browse..., or a folder where GTA 2 is installed "
+                            + "with Folder..., then Install. The game is built from it once, on this device (your files "
+                            + "are only read). The translations pack (more languages) is optional.";
         }
     }
 
@@ -387,20 +399,28 @@ final class VistaSetupView extends View {
         p.setColor(0xFF1E395B);
         float line = 16 * s;
         int n = 0;
-        for (String ln : wrap(intro(), R - L, 3)) { c.drawText(ln, L, ty + 11 * s + n * line, p); n++; }
-        ty += 3 * line + 10 * s;
+        int il = introLines();
+        for (String ln : wrap(intro(), R - L, il)) { c.drawText(ln, L, ty + 11 * s + n * line, p); n++; }
+        ty += il * line + 10 * s;
 
         boolean form = state == FORM;
-        float labelW = 168 * s, browseW = 86 * s, fh = 24 * s;
+        // the labels' column as wide as the longest label (never cut)
+        float labelW = 0, browseW = 86 * s, fh = 24 * s;
+        for (String lb : ROW_LABEL) labelW = Math.max(labelW, p.measureText(lb));
+        labelW += 10 * s;
         for (int r = 0; r < ROWS; r++) {
             float ry = ty + r * ROW * s;
             p.setTypeface(regular);
             p.setTextSize(11.5f * s);
             p.setColor(form ? 0xFF000000 : 0xFF6D6D6D);
             c.drawText(ROW_LABEL[r], L, ry + fh * 0.68f, p);
-            RectF f = new RectF(L + labelW, ry, R - browseW - 8 * s, ry + fh);
-            field(c, f, rowName[r], r == 0 ? "Choose GTA2.exe with Browse..." : "(none)", form);
-            RectF b = new RectF(R - browseW, ry, R, ry + fh);
+            // the first row: Browse... (GTA2.exe) and Folder... (an installed GTA 2)
+            float right = r == ROW_INSTALLER ? R - 2 * browseW - 8 * s : R;
+            RectF f = new RectF(L + labelW, ry, right - browseW - 8 * s, ry + fh);
+            field(c, f, rowName[r], r == 0 ? "GTA2.exe or a GTA 2 folder" : "(none)", form);
+            if (r == ROW_INSTALLER)
+                button(c, new RectF(R - browseW, ry, R, ry + fh), "Folder...", C_FOLDER0, form, false);
+            RectF b = new RectF(right - browseW, ry, right, ry + fh);
             button(c, b, "Browse...", C_BROWSE0 + r, form, false);
         }
         ty += ROWS * ROW * s + 6 * s;
@@ -617,10 +637,14 @@ final class VistaSetupView extends View {
         c.drawLine(r.left + s, r.bottom - s, r.right - s, r.bottom - s, p);
         p.setStyle(Paint.Style.FILL);
         p.setTypeface(regular);
-        p.setTextSize(11.5f * s);
         boolean empty = text.isEmpty();
+        String t = empty ? hint : text;
+        // a long name: a smaller type first (down to 8.5), only then its start shortened
+        float room = r.width() - 10 * s, ts = 11.5f;
+        p.setTextSize(ts * s);
+        while (ts > 8.5f && p.measureText(t) > room) { ts -= 0.5f; p.setTextSize(ts * s); }
         p.setColor(empty ? 0xFF8D8D8D : enabled ? 0xFF000000 : 0xFF6D6D6D);
-        String shown = ellipsizeStart(empty ? hint : text, r.width() - 10 * s);
+        String shown = ellipsizeStart(t, room);
         c.drawText(shown, r.left + 5 * s, r.top + r.height() * 0.68f, p);
     }
 
@@ -894,7 +918,9 @@ final class VistaSetupView extends View {
 
     // ---- text helpers --------------------------------------------------------------------------------------------
 
-    private List<String> wrap(String text, float width, int maxLines) {
+    private List<String> wrap(String text, float width, int maxLines) { return wrap(p, text, width, maxLines); }
+
+    private static List<String> wrap(Paint p, String text, float width, int maxLines) {
         List<String> lines = new ArrayList<>();
         String rest = text == null ? "" : text;
         while (!rest.isEmpty() && lines.size() < maxLines) {
@@ -915,7 +941,7 @@ final class VistaSetupView extends View {
         return t.substring(0, Math.max(0, n)) + "...";
     }
 
-    /** a long file name: its end kept ("...name.exe") */
+    /** a long file or folder name: its end kept ("...name.exe") */
     private String ellipsizeStart(String t, float width) {
         if (p.measureText(t) <= width) return t;
         float room = width - p.measureText("...");
