@@ -21,8 +21,8 @@ compiled **on your device** once, and then it plays - with a gamepad, a handheld
 
 ## Status
 
-**v0.4.1** - based on
-[Grand Theft Auto 2 Recompiled v0.7.1](https://github.com/almost-drowned-rat/Grand-Theft-Auto-2-Recompiled/releases/tag/v0.7.1)
+**v0.4.2** - based on
+[Grand Theft Auto 2 Recompiled v0.7.2](https://github.com/almost-drowned-rat/Grand-Theft-Auto-2-Recompiled/releases/tag/v0.7.2)
 (Windows / Linux). Download the APK from
 [Releases](https://github.com/almost-drowned-rat/Grand-Theft-Auto-2-Recompiled-Android/releases) and install it
 (Android 10+, arm64). It is signed with the project's own key - every later update installs over it and keeps your
