@@ -33,6 +33,20 @@ void sub_004031C0(RECOMP_PARAMS)
     WR_RET(0, 2);
 }
 
+/* Sleep until the clock reaches until. The clock is read ONCE per pass: with a second read for the
+ * rest, a step past until in between made until - now wrap to ~2^64 ns and the thread slept for good
+ * (Android 0.4.1: the picture stood, the music went on; rare, only when preempted right there). */
+static void sleep_until(uint64_t until)
+{
+    for (;;) {
+        uint64_t now = wr_time_ns();
+        if (now >= until)
+            return;
+        uint64_t rest = until - now;
+        wr_sleep_ns(rest > 900000 ? rest - 200000 : rest);
+    }
+}
+
 /* 0x00462A30 the main loop's per-iteration step: one 33 ms logic tick, one
  * draw, or reading input - and otherwise nothing, so the original spins at
  * 100 % of a core until the next tick is due (docs/re/framerate.md). Wrapped:
@@ -121,11 +135,7 @@ void sub_00462A30(RECOMP_PARAMS)
         left = 100;
     }
     if (left > 2) {
-        uint64_t until = wr_time_ns() + (uint64_t)(left - 1) * 1000000u;
-        while (wr_time_ns() < until) {
-            uint64_t rest = until - wr_time_ns();
-            wr_sleep_ns(rest > 900000 ? rest - 200000 : rest);
-        }
+        sleep_until(wr_time_ns() + (uint64_t)(left - 1) * 1000000u);
     }
 }
 
@@ -177,11 +187,7 @@ void sub_0045A320(RECOMP_PARAMS)
         return;   /* an update just ran: its frame is drawn by the next call */
     int32_t left = (int32_t)(MEM32(self + 0xC9C8u) - wr_time_ms());
     if (left > 2 && left < 1000) {
-        uint64_t until = wr_time_ns() + (uint64_t)(left - 1) * 1000000u;
-        while (wr_time_ns() < until) {
-            uint64_t rest = until - wr_time_ns();
-            wr_sleep_ns(rest > 900000 ? rest - 200000 : rest);
-        }
+        sleep_until(wr_time_ns() + (uint64_t)(left - 1) * 1000000u);
     }
 }
 
