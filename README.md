@@ -41,8 +41,8 @@ To get updates automatically, add this repository to [Obtainium](https://github.
 - A GPU with a **Vulkan 1.1** driver (the system driver is enough; a Turnip driver package can be chosen too)
 - Your own GTA 2: the freeware installer **`GTA2.exe`** or an **installed GTA 2 folder** (with `gta2.exe` and its
   `data` folder)
-- Optional: the **translations pack** `GTA2-translations.pak` from the
-  [desktop release](https://github.com/almost-drowned-rat/Grand-Theft-Auto-2-Recompiled/releases/tag/v0.7.0) for
+- Optional: the **translations pack** `GTA2-translations.pak` from
+  [this app's releases](https://github.com/almost-drowned-rat/Grand-Theft-Auto-2-Recompiled-Android/releases) for
   German, French, Italian, Polish, Russian, Japanese and Chinese (English and Spanish come with the game)
 - Free storage: about **2 GB** during the first start, about **500 MB** after it
 
