@@ -19,6 +19,10 @@ set(RECOMP_GEN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/gen/src" CACHE PATH "generated C
 
 add_subdirectory(${WINRECOMP_DIR}/runtime ${CMAKE_BINARY_DIR}/winrecomp_rt)
 
+# GTA2_PORT_ONLY (Android setup kit): the port and the runtime WITHOUT generated code, as a static library the
+# device links with the code it lifts and compiles from the player's own game (no game code in the APK).
+option(GTA2_PORT_ONLY "build only libgta2_port.a (no generated code)" OFF)
+if(NOT GTA2_PORT_ONLY)
 file(GLOB RECOMP_GEN_SOURCES CONFIGURE_DEPENDS "${RECOMP_GEN_DIR}/*.c")
 if(NOT RECOMP_GEN_SOURCES)
     message(FATAL_ERROR "No generated C in ${RECOMP_GEN_DIR} - run tools/lift.sh first")
@@ -40,6 +44,7 @@ target_include_directories(bink_gen PRIVATE ${BINK_GEN_DIR})
 if(NOT MSVC)
     target_compile_options(bink_gen PRIVATE -O2 -w -fwrapv -fno-strict-aliasing)
 endif()
+endif()   # NOT GTA2_PORT_ONLY
 
 set(GTA2_PORT_SOURCES
     src/main.c
@@ -62,6 +67,16 @@ set(GTA2_PORT_SOURCES
     src/render/bink_buffer.c
     $<TARGET_OBJECTS:gta2_gen>
     $<TARGET_OBJECTS:bink_gen>)
+if(GTA2_PORT_ONLY)
+    list(FILTER GTA2_PORT_SOURCES EXCLUDE REGEX "TARGET_OBJECTS")
+    add_library(gta2_port STATIC ${GTA2_PORT_SOURCES})
+    set_target_properties(gta2_port PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_link_libraries(gta2_port PRIVATE winrecomp_rt)
+    add_dependencies(gta2_port gta2_git_id)
+    target_include_directories(gta2_port PRIVATE ${CMAKE_BINARY_DIR})
+    target_compile_options(gta2_port PRIVATE -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
+    return()
+endif()
 if(ANDROID)
     # Android: SDL's Java side (SDLActivity) loads libmain.so and calls SDL_main (M8)
     add_library(gta2_recomp SHARED ${GTA2_PORT_SOURCES})
