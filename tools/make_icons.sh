@@ -7,6 +7,8 @@ svg=$here/assets/icon.svg
 out=$here/assets
 r() { magick -background none -density 384 "$svg" -resize "$1x$1" "$2"; }
 for n in 16 32 48 64 128 256 512; do r $n "$out/icon_$n.png"; done
+# the Linux launcher's window icon (launcher/CMakeLists.txt GTA2_LAUNCHER_ICON): 64x64, 32-bit with alpha
+magick "$out/icon_64.png" -define bmp:format=bmp4 -type TrueColorAlpha "$out/icon_64.bmp"
 magick "$out/icon_16.png" "$out/icon_32.png" "$out/icon_48.png" "$out/icon_64.png" "$out/icon_128.png" \
        "$out/icon_256.png" "$out/icon.ico"
 a=$out/android

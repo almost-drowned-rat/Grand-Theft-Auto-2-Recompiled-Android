@@ -1,64 +1,71 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
-  <!-- GTA 2 Recompiled icon (agent L, 2026-11-26): a black gangster car with gold stripes seen from above on a crossing at night, police red and blue in the corners -
-       the game's top-down view; the family style of the maintainer's ports (dark rounded square, one symbol, no
-       logos, no text). Original drawing, CC0 / the repository's licence. -->
+  <!-- GTA 2 Recompiled icon (agent L, 2026-11-26; maintainer: based on the game's machine-pistol HUD symbol,
+       pointing right, a new fitting background): an own drawing of a compact machine pistol (no outline colour,
+       maintainer 2026-11-26), on a street seen from above at night (the game's view); the family style of the maintainer's
+       ports (dark rounded square, one symbol, no logos, no text). Original drawing, no game art. -->
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#1b1630"/><stop offset="1" stop-color="#0b0a14"/>
+    <linearGradient id="road" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2d332f"/><stop offset="1" stop-color="#141816"/>
     </linearGradient>
-    <radialGradient id="glow" cx="0.08" cy="0.08" r="0.7">
-      <stop offset="0" stop-color="#ff1e3c" stop-opacity="0.55"/><stop offset="1" stop-color="#ff1e3c" stop-opacity="0"/>
+    <radialGradient id="lamp" cx="0.5" cy="0.45" r="0.6">
+      <stop offset="0" stop-color="#fff2b0" stop-opacity="0.16"/><stop offset="1" stop-color="#fff2b0" stop-opacity="0"/>
     </radialGradient>
-    <radialGradient id="glow2" cx="0.92" cy="0.92" r="0.7">
-      <stop offset="0" stop-color="#2f6bff" stop-opacity="0.55"/><stop offset="1" stop-color="#2f6bff" stop-opacity="0"/>
+    <radialGradient id="vig" cx="0.5" cy="0.5" r="0.75">
+      <stop offset="0.55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.6"/>
     </radialGradient>
-    <linearGradient id="body" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#050507"/><stop offset="0.45" stop-color="#3a3a44"/><stop offset="0.55" stop-color="#3a3a44"/><stop offset="1" stop-color="#050507"/>
+    <linearGradient id="metal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7d8c80"/><stop offset="0.25" stop-color="#47534a"/><stop offset="1" stop-color="#161b17"/>
     </linearGradient>
-    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#3b4452"/><stop offset="1" stop-color="#0d1016"/>
-    </linearGradient>
-    <linearGradient id="beam" x1="0" y1="1" x2="0" y2="0">
-      <stop offset="0" stop-color="#fff6c8" stop-opacity="0.55"/><stop offset="1" stop-color="#fff6c8" stop-opacity="0"/>
+    <linearGradient id="grip" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#3c463e"/><stop offset="1" stop-color="#121613"/>
     </linearGradient>
     <clipPath id="r"><rect width="256" height="256" rx="56"/></clipPath>
+    <!-- the gun's parts, used twice: the green outline under, the metal over -->
+    <g id="gun">
+      <rect x="44" y="84" width="150" height="46" rx="9"/>
+      <rect x="186" y="94" width="34" height="26" rx="5"/>
+      <rect x="214" y="99" width="20" height="16" rx="3"/>
+      <rect x="48" y="74" width="20" height="14" rx="3"/>
+      <rect x="168" y="74" width="18" height="14" rx="3"/>
+      <path d="M58 126 L104 126 L92 206 Q90 214 82 214 L52 214 Q44 214 46 206 Z"/>
+      <path d="M134 126 L164 126 L164 226 Q164 232 158 232 L140 232 Q134 232 134 226 Z"/>
+      <path d="M100 126 L136 126 L136 140 Q136 160 118 160 L104 160 Z"/>
+    </g>
   </defs>
   <g transform="translate(8 8) scale(0.9375)"><g clip-path="url(#r)">
-    <rect width="256" height="256" fill="url(#bg)"/>
-    <!-- city blocks -->
-    <g fill="#241f3d">
-      <rect x="0" y="0" width="86" height="86"/><rect x="170" y="0" width="86" height="86"/>
-      <rect x="0" y="170" width="86" height="86"/><rect x="170" y="170" width="86" height="86"/>
+    <rect width="256" height="256" fill="url(#road)"/>
+    <!-- the street from above: kerbs, the yellow centre lines, lane dashes -->
+    <rect x="0" y="0" width="256" height="30" fill="#3a4a2c"/>
+    <rect x="0" y="30" width="256" height="8" fill="#6b6a5a"/>
+    <rect x="0" y="226" width="256" height="30" fill="#3a4a2c"/>
+    <rect x="0" y="218" width="256" height="8" fill="#6b6a5a"/>
+    <g fill="#e2b93b">
+      <rect x="0" y="52" width="256" height="4"/><rect x="0" y="60" width="256" height="4"/>
     </g>
-    <g fill="#2f2850">
-      <rect x="14" y="14" width="58" height="58" rx="4"/><rect x="184" y="14" width="58" height="58" rx="4"/>
-      <rect x="14" y="184" width="58" height="58" rx="4"/><rect x="184" y="184" width="58" height="58" rx="4"/>
+    <g fill="#c9c9bd" opacity="0.6">
+      <rect x="10" y="184" width="40" height="6" rx="1"/><rect x="80" y="184" width="40" height="6" rx="1"/>
+      <rect x="150" y="184" width="40" height="6" rx="1"/><rect x="220" y="184" width="40" height="6" rx="1"/>
     </g>
-    <rect x="0" y="0" width="256" height="256" fill="url(#glow)"/>
-    <rect x="0" y="0" width="256" height="256" fill="url(#glow2)"/>
-    <!-- road markings -->
-    <g fill="#f2c230">
-      <rect x="125" y="4" width="6" height="22" rx="2"/><rect x="125" y="40" width="6" height="22" rx="2"/>
-      <rect x="125" y="196" width="6" height="22" rx="2"/><rect x="125" y="232" width="6" height="22" rx="2"/>
-      <rect x="4" y="125" width="22" height="6" rx="2"/><rect x="40" y="125" width="22" height="6" rx="2"/>
-      <rect x="196" y="125" width="22" height="6" rx="2"/><rect x="232" y="125" width="22" height="6" rx="2"/>
-    </g>
-    <!-- headlight beams and the car, heading down (maintainer 2026-11-26) -->
-    <g transform="rotate(180 128 128)">
-    <!-- headlight beams -->
-    <path d="M110 70 L92 6 L126 6 Z" fill="url(#beam)"/><path d="M146 70 L130 6 L164 6 Z" fill="url(#beam)"/>
-    <!-- the car, from above, heading up -->
-    <g>
-      <rect x="98" y="66" width="60" height="122" rx="22" fill="#0a0810" opacity="0.5" transform="translate(-4 -6)"/>
-      <rect x="98" y="66" width="60" height="122" rx="22" fill="url(#body)" stroke="#9aa0b4" stroke-width="2.5"/>
-      <rect x="106" y="94" width="44" height="26" rx="8" fill="url(#glass)"/>
-      <rect x="108" y="146" width="40" height="18" rx="6" fill="url(#glass)" opacity="0.8"/>
-      <rect x="106" y="122" width="44" height="22" rx="4" fill="#15151b"/>
-      <rect x="112" y="69" width="7" height="116" rx="2" fill="#e0b445"/>
-      <rect x="137" y="69" width="7" height="116" rx="2" fill="#e0b445"/>
-      <rect x="104" y="70" width="12" height="7" rx="3" fill="#fff4c0"/><rect x="140" y="70" width="12" height="7" rx="3" fill="#fff4c0"/>
-      <rect x="104" y="179" width="12" height="5" rx="2" fill="#ff5050"/><rect x="140" y="179" width="12" height="5" rx="2" fill="#ff5050"/>
-    </g>
+    <rect width="256" height="256" fill="url(#lamp)"/>
+    <rect width="256" height="256" fill="url(#vig)"/>
+    <!-- the machine pistol, muzzle right, tilted up a little -->
+    <g transform="translate(-6 -4) rotate(-10 140 150)">
+      <use href="#gun" transform="translate(-4 7)" fill="#000" opacity="0.5"/>
+      <use href="#gun" fill="#9aa69c" stroke="#9aa69c" stroke-width="3.5" stroke-linejoin="round"/>
+      <use href="#gun" fill="url(#metal)"/>
+      <!-- details -->
+      <path d="M58 126 L104 126 L92 206 Q90 214 82 214 L52 214 Q44 214 46 206 Z" fill="url(#grip)"/>
+      <g stroke="#0c0f0d" stroke-width="2.5" opacity="0.8">
+        <line x1="58" y1="150" x2="96" y2="150"/><line x1="56" y1="166" x2="94" y2="166"/>
+        <line x1="54" y1="182" x2="92" y2="182"/><line x1="52" y1="198" x2="90" y2="198"/>
+      </g>
+      <path d="M100 126 L136 126 L136 140 Q136 160 118 160 L104 160 Z" fill="#0b0d0c"/>
+      <path d="M118 128 Q125 140 118 152" fill="none" stroke="#9fb0a2" stroke-width="5" stroke-linecap="round"/>
+      <rect x="138" y="140" width="22" height="86" rx="3" fill="#1d231f"/>
+      <rect x="120" y="96" width="46" height="12" rx="3" fill="#0b0d0c" stroke="#5d6b60" stroke-width="1.5"/>
+      <rect x="50" y="88" width="140" height="5" rx="2" fill="#c8d6ca" opacity="0.35"/>
+      <g fill="#0b0d0c"><rect x="190" y="100" width="4" height="14"/><rect x="198" y="100" width="4" height="14"/><rect x="206" y="100" width="4" height="14"/></g>
+      <circle cx="232" cy="107" r="4.5" fill="#000"/>
     </g>
   </g></g>
 </svg>
