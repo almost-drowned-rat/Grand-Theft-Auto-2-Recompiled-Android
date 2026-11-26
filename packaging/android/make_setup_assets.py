@@ -47,6 +47,9 @@ def main(argv=None) -> int:
     for k in ("port", "winrecomp", "port-build", "device-toolchain", "ndk", "python", "capstone-so", "native",
               "unshield", "sdl3", "out"):
         ap.add_argument("--" + k, required=True)
+    ap.add_argument("--librashader", help="arm64 liblibrashader_capi.so (slang shaders; shipped as librashader.so with "
+                    "the NDK's libc++_shared.so); without it the game's SHADERS page stays greyed out")
+    ap.add_argument("--librashader-licence", help="librashader's LICENSE.md (MPL-2.0)")
     ap.add_argument("--release", default="dev", help="the release name in the kit id (e.g. android-0.1.0)")
     a = ap.parse_args(argv)
 
@@ -160,6 +163,9 @@ def main(argv=None) -> int:
         put(native(f), f)
     put(os.path.join(a.python, "lib/libpython3.15.so"), "libpython3.15.so")
     put(os.path.join(a.python, "lib/libcrypto_python.so"), "libcrypto_python.so")
+    if a.librashader:   # loaded by name at run time (winrecomp post/shader_pass.c); it needs libc++_shared.so
+        put(a.librashader, "librashader.so")
+        put(os.path.join(ndk_sys, "usr/lib/aarch64-linux-android/libc++_shared.so"), "libc++_shared.so")
     put(os.path.join(dtc, "bin/clang"), "libclang_exe.so", do_strip=False)
     put(os.path.join(dtc, "bin/ld.lld"), "liblld_exe.so", do_strip=False)
 
@@ -170,6 +176,8 @@ def main(argv=None) -> int:
     lic_copy(os.path.join(a.python, "lib/python3.15/LICENSE.txt"), "CPython-PSF.txt")
     lic_copy(os.path.join(a.winrecomp, "LICENSE"), "winrecomp-LICENSE.txt")
     lic_copy(os.path.join(a.winrecomp, "NOTICE"), "winrecomp-NOTICE.txt")
+    if a.librashader and a.librashader_licence:
+        lic_copy(a.librashader_licence, "librashader-MPL-2.0.txt")
     for root, _, files in os.walk(os.path.join(dtc, "LICENSES")):
         for f in files:
             lic_copy(os.path.join(root, f), "toolchain_" + f)
@@ -179,6 +187,9 @@ def main(argv=None) -> int:
                  "installer); it ships no game code or data.\n\n"
                  "winrecomp (runtime, lifter)          MIT                 see winrecomp-LICENSE / -NOTICE\n"
                  "SDL 3                                zlib                libsdl.org\n"
+                 + ("librashader (slang shaders)          MPL-2.0             github.com/SnowflakePowered/librashader\n"
+                    "LLVM libc++ (libc++_shared.so)       Apache-2.0 WITH LLVM-exception   llvm.org\n"
+                    if a.librashader else "") +
                  "libadrenotools                       BSD-2-Clause        github.com/bylaws/libadrenotools\n"
                  "CPython 3.15 (embedded, the lifter)  PSF License         python.org\n"
                  "capstone 5                           BSD-3-Clause        capstone-engine.org\n"

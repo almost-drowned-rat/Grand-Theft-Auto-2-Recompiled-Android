@@ -365,7 +365,7 @@ public class Gta2Activity extends SDLActivity {
         };
     }
 
-    /** Settings: Saves, Export log, Soundtracks, Graphics driver, About and licences. */
+    /** Settings: Saves, Export log, Soundtracks, Shaders, Graphics driver, About and licences. */
     private SideMenu.Page settingsPage() {
         return new SideMenu.Page() {
             public String title() { return "Settings"; }
@@ -377,6 +377,12 @@ public class Gta2Activity extends SDLActivity {
                     int n = MediaImport.albums(mediaDir()).size();
                     l.add(new SideMenu.Item("Soundtracks: " + (n == 0 ? "none" : n + (n == 1 ? " album" : " albums"))) {
                         @Override void run() { mMenu.push(soundtracksPage()); }
+                    });
+                }
+                {                                             // shader packs into shader/ (maintainer 2026-11-26)
+                    int n = ShaderImport.packs(shaderDir()).size();
+                    l.add(new SideMenu.Item("Shaders: " + (n == 0 ? "none" : n + (n == 1 ? " pack" : " packs"))) {
+                        @Override void run() { mMenu.push(shadersPage()); }
                     });
                 }
                 String drv = driverName(Gta2Activity.this);
@@ -413,7 +419,8 @@ public class Gta2Activity extends SDLActivity {
     }
 
     private static final int PICK_DRIVER = 4711, PICK_SAVE_EXPORT = 4713, PICK_SAVE_IMPORT = 4714,
-                             PICK_LOG_EXPORT = 4715, PICK_MEDIA = 4716;
+                             PICK_LOG_EXPORT = 4715, PICK_MEDIA = 4716,
+                             PICK_SHADER_ZIP = 4717, PICK_SHADER_DIR = 4718;
     private static final android.net.Uri DOWNLOADS =
         android.net.Uri.parse("content://com.android.providers.downloads.documents/root/downloads");
 
@@ -436,7 +443,7 @@ public class Gta2Activity extends SDLActivity {
 
     @Override
     protected void onActivityResult(int request, int result, Intent data) {
-        if (request < PICK_DRIVER || request > PICK_MEDIA) {          // SDL's own file dialog
+        if (request < PICK_DRIVER || request > PICK_SHADER_DIR) {          // SDL's own file dialog
             super.onActivityResult(request, result, data);
             return;
         }
@@ -445,6 +452,7 @@ public class Gta2Activity extends SDLActivity {
         android.net.Uri u = data.getData();
         switch (request) {
             case PICK_MEDIA: importMedia(u); break;
+            case PICK_SHADER_ZIP: case PICK_SHADER_DIR: importShaders(u, request == PICK_SHADER_DIR); break;
             case PICK_SAVE_EXPORT: {
                 String err = exportSaves(u);
                 message("Saves", err.isEmpty() ? "Your saves are exported. Keep the zip file somewhere safe (it "
@@ -497,10 +505,10 @@ public class Gta2Activity extends SDLActivity {
             ? ext : ctx.getFilesDir();
     }
 
-    /** saves/, data/ and media/ made here, before the game, group-writable (adb push / file managers); shareTree on every
-     *  start also fixes what the game created since. */
+    /** The whole layout - game/, saves/, data/, media/, shader/ (maintainer 2026-11-26) - made here, before the game,
+     *  group-writable (adb push / file managers); shareTree on every start also fixes what the game created since. */
     private void prepareUserDirs() {
-        for (String name : new String[] { "saves", "data", "media" }) {
+        for (String name : new String[] { "game", "saves", "data", "media", "shader" }) {
             File d = new File(userDir(this), name);
             d.mkdirs();
             shareTree(d);
@@ -877,7 +885,8 @@ public class Gta2Activity extends SDLActivity {
 
     private void askRestart(String title, String text) {
         new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle(title).setMessage(text + " The game reads the soundtracks when it starts: restart it now?")
+            .setTitle(title).setMessage(text + " The game reads the " + title.toLowerCase(java.util.Locale.ROOT)
+                                        + " when it starts: restart it now?")
             .setPositiveButton("Restart now", (dlg, w) -> { restartApp(); System.exit(0); })
             .setNegativeButton("Later", null).show();
     }
@@ -979,6 +988,137 @@ public class Gta2Activity extends SDLActivity {
                 askRestart("Soundtracks", "\"" + p.name + "\" is imported (" + n + (n == 1 ? " album)." : " albums)."));
             });
         }, "media-import").start();
+    }
+
+    // ---- Shaders (ShaderImport.java): BACK > Settings > Shaders - "Import shader pack (.zip)..." / "Import folder..."
+    // into shader/, the packs there with their size (tap = remove), a restart afterwards (the game reads shader/ when
+    // it starts); the shader is chosen in the game: RECOMP OPTIONS > SHADERS.
+
+    private File shaderDir() { return new File(userDir(this), "shader"); }
+
+    private SideMenu.Page shadersPage() {
+        return new SideMenu.Page() {
+            public String title() { return "Shaders"; }
+            public java.util.List<SideMenu.Item> items() {
+                java.util.List<SideMenu.Item> l = new java.util.ArrayList<>();
+                l.add(new SideMenu.Item("Import shader pack (.zip)...") {
+                    @Override void run() { mMenu.close(); pickShaders(false); }
+                });
+                l.add(new SideMenu.Item("Import folder...") { @Override void run() { mMenu.close(); pickShaders(true); } });
+                for (final ShaderImport.Pack k : ShaderImport.packs(shaderDir()))
+                    l.add(new SideMenu.Item(k.name + "  - " + MediaImport.mb(k.bytes)) {
+                        @Override void run() { confirmRemoveShaders(k); }
+                    });
+                l.add(new SideMenu.Item("(RetroArch slang shaders, e.g. libretro's slang-shaders zip - choose one in the "
+                                        + "game: RECOMP OPTIONS > SHADERS; tap a pack to remove it)"));
+                return l;
+            }
+        };
+    }
+
+    private void pickShaders(boolean folder) {
+        Intent i;
+        if (folder) {
+            i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        } else {
+            i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            i.addCategory(Intent.CATEGORY_OPENABLE);
+            i.setType("*/*");                                  // some providers do not type zips as application/zip
+            i.putExtra(Intent.EXTRA_MIME_TYPES, new String[] { "application/zip", "application/x-zip-compressed",
+                                                               "application/octet-stream" });
+        }
+        i.putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, DOWNLOADS);
+        try {
+            startActivityForResult(i, folder ? PICK_SHADER_DIR : PICK_SHADER_ZIP);
+        } catch (Exception e) {
+            message("Shaders", "This device has no file picker.");
+        }
+    }
+
+    private void confirmRemoveShaders(final ShaderImport.Pack k) {
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Shaders")
+            .setMessage("Remove the shader pack \"" + k.name + "\" (" + MediaImport.mb(k.bytes) + ") from the app? "
+                        + "The file you imported it from stays.")
+            .setPositiveButton("Remove", (dlg, w) -> {
+                ShaderImport.remove(shaderDir(), gameLogDir(this), k);
+                Log.i(TAG, "[SHADER] pack removed: " + k.name);
+                mMenu.refresh();
+                askRestart("Shaders", "\"" + k.name + "\" is removed.");
+            })
+            .setNegativeButton("Cancel", null).show();
+    }
+
+    @SuppressWarnings("deprecation")
+    private void importShaders(final android.net.Uri u, final boolean folder) {
+        final android.app.ProgressDialog wait = new android.app.ProgressDialog(this, android.R.style.Theme_DeviceDefault_Dialog_Alert);
+        wait.setTitle("Shaders");
+        wait.setMessage(folder ? "Looking at the folder..." : "Looking at the file...");
+        wait.setCancelable(false);
+        wait.show();
+        new Thread(() -> {
+            final ShaderImport.Plan p = folder ? ShaderImport.folder(getContentResolver(), u)
+                                               : ShaderImport.zip(getContentResolver(), u);
+            runOnUiThread(() -> { wait.dismiss(); askImportShaders(p, folder); });
+        }, "shader-scan").start();
+    }
+
+    private void askImportShaders(final ShaderImport.Plan p, boolean folder) {
+        if (p == null) { message("Shaders", "That is not a .zip file - a shader pack comes as a .zip or a folder."); return; }
+        if (folder && p.presets == 0) {
+            message("Shaders", "There are no shader presets (.slangp) in \"" + p.name + "\" or its sub folders. A "
+                    + "shader pack in a .zip: use \"Import shader pack (.zip)...\".");
+            return;
+        }
+        long free = shaderDir().getParentFile().getUsableSpace();
+        long need = p.bytes * (p.zip ? 3 : 1) + (64L << 20);   // a zip is unpacked once more by the game
+        if (need > free) {
+            message("Shaders", "Not enough free space: the shaders need about " + MediaImport.mb(need) + ", the device "
+                    + "has " + MediaImport.mb(free) + " free.");
+            return;
+        }
+        File dst = ShaderImport.target(shaderDir(), p);
+        String msg = "\"" + p.name + "\": " + MediaImport.mb(p.bytes)
+                     + (p.zip ? " (the game unpacks it at its next start)." : ", " + p.presets + " presets.")
+                     + (dst.exists() ? "\n\nThe app already has it - it is replaced." : "");
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Import shaders").setMessage(msg)
+            .setPositiveButton(dst.exists() ? "Replace" : "Import", (dlg, w) -> copyShaders(p))
+            .setNegativeButton("Cancel", null).show();
+    }
+
+    @SuppressWarnings("deprecation")
+    private void copyShaders(final ShaderImport.Plan p) {
+        final android.app.ProgressDialog bar = new android.app.ProgressDialog(this, android.R.style.Theme_DeviceDefault_Dialog_Alert);
+        final boolean[] cancel = { false };
+        bar.setTitle("Importing \"" + p.name + "\"");
+        bar.setProgressStyle(android.app.ProgressDialog.STYLE_HORIZONTAL);
+        bar.setMax(1000);
+        bar.setCancelable(false);
+        bar.setButton(android.content.DialogInterface.BUTTON_NEGATIVE, "Cancel", (d, w) -> cancel[0] = true);
+        bar.show();
+        final File shader = shaderDir();
+        shader.mkdirs();
+        new Thread(() -> {
+            final long[] last = { 0 };
+            final String err = ShaderImport.copy(getContentResolver(), p, shader, (done, total, file) -> {
+                long now = android.os.SystemClock.uptimeMillis();
+                if (now - last[0] > 100) {
+                    last[0] = now;
+                    final int v = (int) (done * 1000 / Math.max(1, total));
+                    runOnUiThread(() -> { bar.setProgress(v); bar.setMessage(file); });
+                }
+                return !cancel[0];
+            });
+            shareTree(shader);
+            runOnUiThread(() -> {
+                bar.dismiss();
+                if (err.equals("cancel")) { message("Shaders", "The import is cancelled - nothing was added."); return; }
+                if (!err.isEmpty()) { message("Shaders", err); return; }
+                Log.i(TAG, "[SHADER] imported \"" + p.name + "\": " + p.rel.size() + " files, " + p.bytes + " bytes");
+                askRestart("Shaders", "\"" + p.name + "\" is imported.");
+            });
+        }, "shader-import").start();
     }
 
     // ---- Graphics driver: the system driver or a Turnip package the player added (.adpkg.zip, e.g. purple-turnip).
