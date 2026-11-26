@@ -358,6 +358,8 @@ static void build_browse_page(void)
         n = (int)(sizeof l_browse / sizeof l_browse[0]);
     for (int i = 0; i < n; i++)
         l_browse[i] = (mline){ g_browse_items[i].label, L_SHITEM, i };
+    if (!n)   /* no pack yet: one line saying so (an empty page crashed - the cursor went to -1) */
+        l_browse[n++] = (mline){ "NO SHADER PACKS IN THE SHADER FOLDER", L_ACTION, 0 };
     g_pages[VP_SHBROWSE].n = n;
     gta2_shader_dir_title(g_browse_title, sizeof g_browse_title);
 }
@@ -794,6 +796,8 @@ static void menu_keys(X86Ctx *ctx, uint32_t f, int left, int right, int up, int 
     pg = &g_pages[g_vp];
     if (g_cur >= pg->n)
         g_cur = pg->n - 1;
+    if (g_cur < 0)   /* an empty page: never a line before the first */
+        g_cur = 0;
     if (g_cur < g_top)
         g_top = g_cur;
     if (g_cur >= g_top + VISIBLE)
