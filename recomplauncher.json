@@ -1,0 +1,52 @@
+{
+  "$schema": "https://recomplauncher.com/schema/recomplauncher.json",
+  "format": 1,
+  "name": "Grand Theft Auto 2 Recompiled",
+  "repo": "almost-drowned-rat/Grand-Theft-Auto-2-Recompiled",
+  "inputs": [
+    {
+      "id": "game",
+      "label": "Your GTA 2: the freeware installer GTA2.exe (the 2004 Rockstar release, about 362 MB), or a folder where that GTA 2 is installed",
+      "formats": [{ "type": "file", "extensions": ["exe"] }, { "type": "folder" }]
+    },
+    {
+      "id": "translations",
+      "label": "Optional: the translations pack GTA2-translations.pak (a download of its own on the release page), for more languages",
+      "role": "update",
+      "optional": true,
+      "formats": [{ "type": "file", "extensions": ["pak"] }]
+    }
+  ],
+  "prepare": {
+    "program": ["GTA2-x86_64.AppImage", "gta2_launcher"],
+    "args": ["--installer={input:game}", "--file={input:translations}", "--go", "--no-start"],
+    "env": { "RECOMP_NO_DIALOGS": "1" },
+    "label": "Unpacking your GTA 2, translating and compiling the game for your PC (a few minutes, only once)",
+    "keeps_copy": true,
+    "done": ["{install}/data/build/stamp.txt", "{install}/data/gta2_recomp", "{install}/game/gta2.exe"]
+  },
+  "start": {
+    "program": ["GTA2-x86_64.AppImage", "gta2_launcher"]
+  },
+  "config": [
+    {
+      "id": "main",
+      "format": "ini",
+      "file": [{ "path": "{install}/saves/settings.ini" }]
+    }
+  ],
+  "saves": ["{install}/saves"],
+  "folders": {
+    "game": [{ "path": "{install}/game" }],
+    "saves": [{ "path": "{install}/saves" }],
+    "logs": [{ "path": "{install}/data" }],
+    "media": [{ "path": "{install}/media" }]
+  },
+  "system": {
+    "linux": { "glibc": "2.35", "graphics": { "vulkan": "1.1" } }
+  },
+  "actions": [
+    { "id": "saves", "label": "Saves", "help": "Your saved games, the game's settings and its registry.", "open": "saves" },
+    { "id": "media", "label": "Music and shaders", "help": "Your own albums for the MIXTAPE radio, and slang shader packs (media/shaders).", "open": "media" }
+  ]
+}

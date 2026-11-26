@@ -52,7 +52,7 @@ static const Rgb K_FACE = {212, 208, 200}, K_LIGHT = {255, 255, 255}, K_SHADOW =
 #define FIELD_MAX     4096
 
 enum { ID_ISO = 100, ID_ISO2, ID_TARGET, ID_FILE, ID_BROWSE = 200, ID_BROWSE2, ID_BROWSE_TARGET, ID_COPY, ID_BROWSE_FILE,
-       ID_GO = 300, ID_QUIT };
+       ID_BROWSE_DIR, ID_GO = 300, ID_QUIT };
 
 typedef struct {
     int  id, x, y, w, h;
@@ -76,6 +76,7 @@ struct XrSetupUi {
     char          extra_label[120];     /* the second disc's line ("" none) */
     char          main_label[120];      /* the first line's label, its file dialog's filter, what it asks for */
     char          main_filter_name[120], main_filter[60], main_what[200];
+    int           main_folder;          /* the first line takes a folder too: a "Folder..." button beside Browse... */
     int           rows, lines, has_extra;
     char          file_label[120];
     char          file_filter_name[120], file_filter[60];
@@ -126,10 +127,11 @@ XrSetupUi *xr_setup_ui_open(const char *title)
 }
 
 void xr_setup_ui_main_line(XrSetupUi *ui, const char *label, const char *filter_name, const char *filter,
-                           const char *what)
+                           const char *what, int folder)
 {
     if (!ui)
         return;
+    ui->main_folder = folder;
     if (label && *label)
         snprintf(ui->main_label, sizeof ui->main_label, "%s", label);
     if (filter_name && *filter_name)
@@ -693,8 +695,9 @@ static void browse(XrSetupUi *ui, int id)
     ui->dialog_open = 1;
     ui->dialog_done = 0;
     ui->dialog_path[0] = 0;
-    ui->dialog_target = id == ID_BROWSE ? ID_ISO : id == ID_BROWSE2 ? ID_ISO2 : id == ID_BROWSE_FILE ? ID_FILE : ID_TARGET;
-    if (id == ID_BROWSE_TARGET) {
+    ui->dialog_target = id == ID_BROWSE || id == ID_BROWSE_DIR ? ID_ISO : id == ID_BROWSE2 ? ID_ISO2
+                      : id == ID_BROWSE_FILE ? ID_FILE : ID_TARGET;
+    if (id == ID_BROWSE_TARGET || id == ID_BROWSE_DIR) {
         SDL_ShowOpenFolderDialog(picked, ui, ui->win, NULL, false);
     } else if (id == ID_BROWSE_FILE) {
         char pattern[60];
@@ -718,6 +721,7 @@ static void command(XrSetupUi *ui, int id)
     case ID_BROWSE2:
     case ID_BROWSE_FILE:
     case ID_BROWSE_TARGET:
+    case ID_BROWSE_DIR:
         browse(ui, id);
         break;
     case ID_GO:
@@ -1040,7 +1044,12 @@ static int ui_show(XrSetupUi *ui)
         }
     }
     /* sunken white fields, Browse..., Go, Quit - the Windows window's places */
-    child(ui, 0, "", 170, 67 + UI_TOP, 250, 21, ID_ISO);
+    if (ui->main_folder) {              /* a file or a folder: Folder... between the field and Browse... */
+        child(ui, 0, "", 170, 67 + UI_TOP, 166, 21, ID_ISO);
+        child(ui, 1, "Folder...", 344, 67 + UI_TOP, 76, 22, ID_BROWSE_DIR);
+    } else {
+        child(ui, 0, "", 170, 67 + UI_TOP, 250, 21, ID_ISO);
+    }
     child(ui, 1, "Browse...", 428, 67 + UI_TOP, 76, 22, ID_BROWSE);
     if (ui->has_extra) {
         child(ui, 0, "", 170, 67 + UI_TOP + UI_ROW, 250, 21, ID_ISO2);
@@ -1100,10 +1109,11 @@ int xr_setup_ui_form(XrSetupUi *ui, const char *disc_name, char *iso, size_t n, 
     if (!ui_show(ui))
         return -1;
     if (note && *note)
-        snprintf(ui->intro, sizeof ui->intro, "%s Choose it with Browse..., then Go.", note);
+        snprintf(ui->intro, sizeof ui->intro, "%s Choose it with %s, then Go.", note,
+                 ui->main_folder ? "Browse... or Folder..." : "Browse...");
     else
         snprintf(ui->intro, sizeof ui->intro, "Choose your %s, then Go. The game is built from it once and its files "
-                 "unpacked into the game folder (the %s is only read).", disc_name ? disc_name : "", ui->main_what);
+                 "copied into the game folder (the %s is only read).", disc_name ? disc_name : "", ui->main_what);
     ui->status[0] = 0;
     ui->progress = 0;
     ui->building = 0;
@@ -1170,8 +1180,7 @@ int xr_setup_ui_form(XrSetupUi *ui, const char *disc_name, char *iso, size_t n, 
     if (copy)
         *copy = 1;                      /* (the discs are always unpacked into game/) */
     enable_page(ui, 0);
-    snprintf(ui->intro, sizeof ui->intro, "The game is being built from your %s - this happens only once.",
-             ui->main_what);
+    snprintf(ui->intro, sizeof ui->intro, "The game is being built - this happens only once.");
     pump(ui);
     return 1;
 }
@@ -1234,7 +1243,11 @@ int xr_no_dialogs(void) { return no_dialogs_env(); }
 
 void xr_setup_ui_message(XrSetupUi *ui, int error, const char *msg)
 {
-    if (xr_no_dialogs() || (ui && ui->closed && !ui->in_form))
+    if (xr_no_dialogs()) {              /* (windowless: the reason as the last line - RecompLauncher shows it) */
+        fprintf(stderr, "%s\n", msg ? msg : "");
+        return;
+    }
+    if (ui && ui->closed && !ui->in_form)
         return;                         /* (the player quit during the installation: no "... failed" after it) */
     box(ui, error ? SDL_MESSAGEBOX_ERROR : SDL_MESSAGEBOX_WARNING, msg ? msg : "", 0);
 }

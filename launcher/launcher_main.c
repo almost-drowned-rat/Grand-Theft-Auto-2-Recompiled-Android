@@ -18,12 +18,13 @@ int main(int argc, char **argv)
 {
     static const GtaLauncherConfig cfg = {
         "GTA 2",
-        "GTA 2 freeware installer (GTA2.exe, the 2004 Rockstar release)",
-        "GTA 2 installer:",
+        "GTA 2 freeware installer (GTA2.exe, the 2004 Rockstar release) or a folder with it installed",
+        "GTA 2 installer or folder:",
         "GTA 2 installer (GTA2.exe)",
         "exe",
         "GTA2.exe",
-        "That file is not the GTA 2 freeware installer (GTA2.exe, the 2004 Rockstar release).",
+        "That is neither the GTA 2 freeware installer (GTA2.exe, the 2004 Rockstar release) nor a folder with that "
+        "GTA 2 installed.",
         "Grand Theft Auto 2 Recompiled - Setup",
         "gta2_recomp",
         ICON_DATA,

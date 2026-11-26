@@ -25,10 +25,11 @@ extern "C" {
 typedef struct XrSetupUi XrSetupUi;
 
 XrSetupUi *xr_setup_ui_open(const char *title);
-/* The first line's label ("GTA 2 installer:"), its file dialog's filter ("GTA 2 installer (GTA2.exe)", "exe") and
- * what it asks for in the texts ("installer"), before the first xr_setup_ui_form. */
+/* The first line's label ("GTA 2 installer or folder:"), its file dialog's filter ("GTA 2 installer (GTA2.exe)",
+ * "exe"), what it asks for in the texts ("installer or folder") and with `folder` a "Folder..." button beside
+ * Browse... (a folder picked instead of a file), before the first xr_setup_ui_form. */
 void xr_setup_ui_main_line(XrSetupUi *ui, const char *label, const char *filter_name, const char *filter,
-                           const char *what);
+                           const char *what, int folder);
 /* The window's icon (a BMP in memory, kept by the caller), before the first progress call. */
 void xr_setup_ui_icon(XrSetupUi *ui, const void *bmp, size_t n);
 void xr_setup_ui_progress(void *ui, double fraction, const char *text);

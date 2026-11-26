@@ -83,5 +83,7 @@ The release packaging: `docs/linux_release.md`. Generated C, game files and buil
   [capstone](https://www.capstone-engine.org), [pefile](https://github.com/erocarrera/pefile),
   [unshield](https://github.com/twogood/unshield), dr_libs, stb_vorbis, Noto fonts
 
+Licence: MIT for the port (the Linux launcher GPL-3.0) - see `LICENSES.md`.
+
 Grand Theft Auto and GTA are trademarks of Take-Two Interactive Software. This project is not affiliated with or
 endorsed by Rockstar Games or Take-Two Interactive.

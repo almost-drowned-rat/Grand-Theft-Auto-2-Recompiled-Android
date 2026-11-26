@@ -14,11 +14,12 @@
 #        --appimagetool <appimagetool-x86_64.AppImage>
 #        [--deps <build_deps.sh's prefix; default: built into <out>/deps>]
 #        [--site-packages <a Python site-packages with capstone 5.0.x and pefile; default ../winrecomp/.venv's>]
-#        [--librashader <librashader.so built for glibc <= 2.35; shipped beside the game (shaders) - none: shaders off>]
+#        [--librashader <librashader_compat.sh's librashader.so (its librashader_compat.so beside it): the slang
+#         shaders, shipped beside the game - none: shaders off>] [--librashader-licence <its LICENSE.md, MPL-2.0>]
 #
 # All paths absolute. Out: <out>/release/{GTA2-x86_64.AppImage, GTA2-linux-x86_64.tar.gz, SHA256SUMS.txt}.
 set -euo pipefail
-RELEASE= OUT= LLVM= SYSROOT= BUNDLE= TOOL= DEPS= SITE= RASHADER=
+RELEASE= OUT= LLVM= SYSROOT= BUNDLE= TOOL= DEPS= SITE= RASHADER= RASHADER_LIC=
 while [ $# -gt 0 ]; do
     case "$1" in
         --release) RELEASE="$2"; shift 2 ;;
@@ -30,6 +31,7 @@ while [ $# -gt 0 ]; do
         --deps) DEPS="$2"; shift 2 ;;
         --site-packages) SITE="$2"; shift 2 ;;
         --librashader) RASHADER="$2"; shift 2 ;;
+        --librashader-licence) RASHADER_LIC="$2"; shift 2 ;;
         *) echo "unknown argument $1" >&2; exit 2 ;;
     esac
 done
@@ -38,6 +40,12 @@ for v in RELEASE OUT LLVM SYSROOT BUNDLE TOOL; do
 done
 [ ${#RELEASE} -le 32 ] || { echo "--release: at most 32 bytes" >&2; exit 2; }
 HERE="$(cd "$(dirname "$0")" && pwd)"
+RASHADER_COMPAT=
+if [ -n "$RASHADER" ]; then
+    RASHADER_COMPAT="$(dirname "$RASHADER")/librashader_compat.so"
+    [ -f "$RASHADER_COMPAT" ] || { echo "no librashader_compat.so beside $RASHADER (librashader_compat.sh)" >&2; exit 2; }
+    [ -f "$RASHADER_LIC" ] || { echo "--librashader needs --librashader-licence (MPL-2.0 text)" >&2; exit 2; }
+fi
 PORT="$(cd "$HERE/../.." && pwd)"
 TOOLKIT="$(cd "$PORT/../winrecomp" && pwd)"
 WS="$(cd "$PORT/../.." && pwd)"
@@ -73,7 +81,7 @@ cmake -S "$PORT/launcher" -B "$OUT/build-launcher" "${TC[@]}" -DGTA2_LAUNCHER_SD
     -DGTA2_LAUNCHER_ICON="$PORT/assets/icon_64.bmp" -DSDL_SNDIO=OFF -DSDL_IBUS=OFF > "$OUT/build-launcher.configure.log"
 ninja -C "$OUT/build-launcher" > "$OUT/build-launcher.log"
 max="$(objdump -T "$OUT/build-launcher/gta2_launcher" "$DEPS/lib/libSDL3.so.0" "$DEPS/bin/unshield" \
-       ${RASHADER:+"$RASHADER"} | grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sort -uV | tail -1)"
+       ${RASHADER:+"$RASHADER" "$RASHADER_COMPAT"} | grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sort -uV | tail -1)"
 case "$max" in GLIBC_2.[0-9]|GLIBC_2.[12][0-9]|GLIBC_2.3[0-5]) echo "  glibc: $max at most" ;;
     *) echo "the release needs $max (more than glibc 2.35)" >&2; exit 1 ;; esac
 
@@ -84,7 +92,10 @@ mkdir -p "$S/lib" "$S/bin" "$S/bundle" "$S/LICENSES" "$S/winrecomp"
 cp "$OUT/build-port/libgta2_port.a" "$OUT/build-port/winrecomp_rt/libwinrecomp_rt.a" \
    "$OUT/build-port/winrecomp_rt/shaderpack/libxbox_shaderpack.a" "$PORT/src/exports.dynlist" "$S/lib/"
 cp -L "$DEPS/lib/libSDL3.so.0" "$S/lib/libSDL3.so.0"
-[ -n "$RASHADER" ] && cp -L "$RASHADER" "$S/lib/librashader.so"
+if [ -n "$RASHADER" ]; then
+    cp -L "$RASHADER" "$S/lib/librashader.so"
+    cp -L "$RASHADER_COMPAT" "$S/lib/librashader_compat.so"
+fi
 cp "$DEPS/bin/unshield" "$S/bin/unshield"
 cp "$PORT/tools/setup_build.py" "$S/setup_build.py"
 cp -r "$PORT/config" "$S/config"
@@ -120,18 +131,25 @@ done
 cp "$PORT/launcher/LICENSE" "$S/LICENSES/launcher-GPL-3.0.txt"
 cp "$PORT/launcher/third_party/miniz/LICENSE" "$S/LICENSES/miniz-MIT.txt"
 cp "$PORT/launcher/fonts/LiberationFonts-OFL.txt" "$S/LICENSES/LiberationFonts-OFL.txt"
+if [ -n "$RASHADER" ]; then
+    cp "$RASHADER_LIC" "$S/LICENSES/librashader-MPL-2.0.txt"
+    printf '%s\n' "librashader 0.12.1 (MPL-2.0), unmodified source: https://github.com/SnowflakePowered/librashader/tree/librashader-v0.12.1" \
+        "(the shipped binary: its symbol versions adjusted for glibc 2.35 by tools/linux/librashader_compat.sh)" \
+        > "$S/LICENSES/librashader-SOURCE.txt"
+fi
 cp "$DEPS"/SDL3-LICENSE.txt "$DEPS"/unshield-LICENSE.txt "$DEPS"/zlib-LICENSE.txt "$S/LICENSES/"
 ZSHA="$(sha256sum "$S/bundle/llvm-linux.zip" | cut -d' ' -f1)"
 ZSIZE="$(stat -c %s "$S/bundle/llvm-linux.zip")"
 printf 'format\t2\nclang\tllvm/bin/clang++\npython\tpython/bin/%s\nbundle\tbundle/llvm-linux.zip\t%s\t%s\tllvm\tllvm\n' \
     "$PYV" "$ZSHA" "$ZSIZE" > "$S/toolchain.txt"
-# the steps (launcher.c): check = the game's files of an earlier build; extract = from the installer (exit 3: not
-# the GTA 2 freeware installer); then the lift lines
+# the steps (launcher.c): check = the game's files of an earlier build; extract = from the installer, extract-folder
+# = from an installed GTA 2 (exit 3: not the GTA 2 freeware release); then the lift lines
 T=$'\t'
 cat > "$S/lift.txt" <<EOF
 # the first-start build (tools/setup_build.py): check / extract run by themselves, then the rest in order
 check${T}{TOOLS}/setup_build.py${T}check${T}--game${T}{GAME}
 extract${T}{TOOLS}/setup_build.py${T}extract${T}--installer${T}{INPUT}${T}--unshield${T}{TOOLS}/bin/unshield${T}--work${T}{WORK}${T}--game${T}{GAME}
+extract-folder${T}{TOOLS}/setup_build.py${T}extract${T}--folder${T}{INPUT}${T}--work${T}{WORK}${T}--game${T}{GAME}
 lift-gta2${T}{TOOLS}/setup_build.py${T}lift${T}--game${T}{GAME}${T}--toolkit${T}{TOOLS}/winrecomp${T}--config${T}{TOOLS}/config${T}--work${T}{WORK}${T}--module${T}gta2
 lift-bink${T}{TOOLS}/setup_build.py${T}lift${T}--game${T}{GAME}${T}--toolkit${T}{TOOLS}/winrecomp${T}--config${T}{TOOLS}/config${T}--work${T}{WORK}${T}--module${T}bink
 EOF
@@ -150,7 +168,7 @@ LINK=(link --target=x86_64-unknown-linux-gnu "--sysroot={TOOLS}/llvm/sysroot" -f
     printf 'glob\t{WORK}/gen/gta2/src\t.c\nglob\t{WORK}/gen/bink/src\t.c\n'
     (IFS=$'\t'; echo "${LINK[*]}")
     printf 'copy\t{TOOLS}/lib/libSDL3.so.0\t{DATA}/libSDL3.so.0\n'
-    [ -n "$RASHADER" ] && printf 'copy\t{TOOLS}/lib/librashader.so\t{DATA}/librashader.so\n'
+    [ -n "$RASHADER" ] && printf 'copy\t{TOOLS}/lib/librashader.so\t{DATA}/librashader.so\ncopy\t{TOOLS}/lib/librashader_compat.so\t{DATA}/librashader_compat.so\n'
     true
 } > "$S/build.txt"
 printf '%s' "$RELEASE" > "$S/release.txt"
@@ -187,6 +205,8 @@ A="$OUT/AppDir"
 rm -rf "$A"
 mkdir -p "$A/usr/bin"
 cp "$OUT/launcher-payload" "$A/usr/bin/gta2-launcher"
+# RecompLauncher's manifest: /recomplauncher.json in the AppImage, on top of the tar.gz's folder
+cp "$PORT/recomplauncher.json" "$A/recomplauncher.json"
 cat > "$A/AppRun" <<'EOF'
 #!/bin/sh
 # the launcher: it builds the game into data/ beside this AppImage at the first start, then starts it. Unpacked and
@@ -217,6 +237,7 @@ rm -rf "$OUT/tar-stage"
 mkdir -p "$OUT/tar-stage/$TAR_BASE"
 cp "$OUT/launcher-payload" "$OUT/tar-stage/$TAR_BASE/$LAUNCHER"
 cp "$PORT/assets/icon_256.png" "$OUT/tar-stage/$TAR_BASE/icon.png"
+cp "$PORT/recomplauncher.json" "$OUT/tar-stage/$TAR_BASE/recomplauncher.json"
 printf '%s\n' "$DESKTOP_NAME $RELEASE - start ./$LAUNCHER (the first start builds the game from your GTA 2 freeware installer GTA2.exe, in this folder)." \
     > "$OUT/tar-stage/$TAR_BASE/README.txt"
 tar -C "$OUT/tar-stage" -czf "$OUT/release/$TAR_NAME" "$TAR_BASE"

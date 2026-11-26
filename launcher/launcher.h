@@ -10,9 +10,10 @@
  *   (tools/setup_build.py extract: exit 3 = not that installer) -> lift gta2.exe and binkw32.dll to C -> compile ->
  *   link -> start the game (WR_ROOT = the game's folder).
  *
- * Nothing is downloaded and the installer is only read. Later starts start the game at once (data/build/stamp.txt:
- * the release + the installer's SHA-256); a new release builds again from game/ (no installer needed); `--repair`
- * builds again. What to run is data in the payload (lift.txt, build.txt, toolchain.txt, written by
+ * Nothing is downloaded and the installer (or an installed GTA 2 folder) is only read, once: after the first start
+ * nothing refers to it - game/ holds real copies of every file the game and a rebuild need (the maintainer's rule).
+ * Later starts start the game at once (data/build/stamp.txt: the release + game/gta2.exe's SHA-256); a new release
+ * and `--repair` build again from game/ alone (sha1-checked), without the installer. What to run is data in the payload (lift.txt, build.txt, toolchain.txt, written by
  * tools/linux/release_linux.sh), so this file knows only the game's names (GtaLauncherConfig).
  *
  * From Zone of the Enders Recompiled's engine/launcher/launcher.h (ps2recomp-option-p, ad3b491, the same author's),

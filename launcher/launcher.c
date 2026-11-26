@@ -43,7 +43,7 @@ typedef struct {
     char appimage[LP];                      /* Linux: the AppImage file started ("" none) - copied to a target folder */
     char payload[LP];                       /* the file the payload trailer was found on (exe, or an older AppImage) */
     char out[LP];                           /* the game: root/data/game_exe ({OUT}) */
-    char input[LP];                         /* {INPUT}: the player's GTA 2 installer (only read) */
+    char input[LP];                         /* {INPUT}: the player's GTA 2 installer or installed GTA 2 folder (only read) */
     char release[33];
     char clang[LP], python[LP];             /* toolchain.txt: absolute */
     char jobs[16];                          /* {JOBS} */
@@ -94,6 +94,15 @@ static int is_file(const char *p)
     SDL_PathInfo pi;
     return SDL_GetPathInfo(p, &pi) && pi.type == SDL_PATHTYPE_FILE;
 }
+
+static int is_dir(const char *p)
+{
+    SDL_PathInfo pi;
+    return SDL_GetPathInfo(p, &pi) && pi.type == SDL_PATHTYPE_DIRECTORY;
+}
+
+/* the player's copy: the installer (a file) or an installed GTA 2 (a folder) */
+static int is_input(const char *p) { return p && *p && (is_file(p) || is_dir(p)); }
 
 static Sint64 file_size(const char *p)
 {
@@ -388,9 +397,30 @@ static int SDLCALL job_main(void *p)
     return 0;
 }
 
+/* Without dialogs (RECOMP_NO_DIALOGS=1: tests, RecompLauncher's windowless setup step): "progress 0.42 <step>" lines
+ * on stdout - when the percentage or the step changes, and every 30 s on long work */
+static void progress_line(double f, const char *step)
+{
+    static int last_pct = -1;
+    static char last_step[128];
+    static Uint64 last_t;
+    const int pct = (int)(f * 100.0);
+    const Uint64 now = SDL_GetTicks();
+    if (!xr_no_dialogs())
+        return;
+    if (pct == last_pct && !strcmp(step, last_step) && now - last_t < 30000)
+        return;
+    last_pct = pct;
+    last_t = now;
+    snprintf(last_step, sizeof last_step, "%s", step);
+    printf("progress %.2f %s\n", f < 0 ? 0.0 : f > 1 ? 1.0 : f, step);
+    fflush(stdout);
+}
+
 static void ui_say(L *l, double within, const char *extra)
 {
     char t[256];
+    progress_line(l->base + l->span * (within < 0 ? 0 : within > 1 ? 1 : within), l->step);
     snprintf(t, sizeof t, "%s%s%s", l->step, extra && *extra ? " - " : "", extra ? extra : "");
     if (l->ui)
         xr_setup_ui_progress(l->ui, l->base + l->span * (within < 0 ? 0 : within > 1 ? 1 : within), t);
@@ -1164,7 +1194,9 @@ static int move_to_target(L *l, const char *target, const char *file)
 }
 /* ── the installer ─────────────────────────────────────────────────────── */
 
-/* data/launcher.ini (the launcher's own, key=value lines): "installer", the installer the last build used */
+/* data/launcher.ini (the launcher's own, key=value lines): "installer", the copy the last build used - only the setup
+ * page's pre-fill (the maintainer's rule: after the first start nothing refers to the player's installer or folder;
+ * every file the game and a rebuild need is a real copy in game/) */
 static int ini_get(L *l, const char *key, char *out, size_t n)
 {
     char p[LP], *t, *line, *save = NULL;
@@ -1227,16 +1259,53 @@ static SDL_EnumerationResult SDLCALL find_cb(void *u, const char *dir, const cha
     return SDL_ENUM_SUCCESS;
 }
 
-/* the installer: --installer, the one the last build used, GTA2.exe beside the AppImage (any case) */
-static int find_installer(L *l, const char *arg)
+/* an installed GTA 2 beside the AppImage: a folder there (not the game's own game/ data/ saves/ media/) with
+ * gta2.exe in it or one level below (setup_build.py looks up to 3 levels down and checks it) */
+typedef struct { L *l; int depth; char found[LP]; } FindGame;
+
+static SDL_EnumerationResult SDLCALL game_dir_cb(void *u, const char *dir, const char *name)
 {
+    static const char *const own[] = { "game", "data", "saves", "media" };
+    FindGame *g = (FindGame *)u;
     FindFile f;
     char p[LP];
-    if (arg && is_file(arg)) {
+    size_t i;
+    join(p, sizeof p, dir, name);
+    if (!is_dir(p))
+        return SDL_ENUM_CONTINUE;
+    if (g->depth == 0)
+        for (i = 0; i < sizeof own / sizeof *own; i++)
+            if (!SDL_strcasecmp(name, own[i]))
+                return SDL_ENUM_CONTINUE;
+    memset(&f, 0, sizeof f);
+    f.name = "gta2.exe";
+    SDL_EnumerateDirectory(p, find_cb, &f);
+    if (f.found[0]) {
+        snprintf(g->found, sizeof g->found, "%s", p);
+        return SDL_ENUM_SUCCESS;
+    }
+    if (g->depth == 0) {
+        g->depth = 1;
+        SDL_EnumerateDirectory(p, game_dir_cb, g);
+        g->depth = 0;
+        if (g->found[0])
+            return SDL_ENUM_SUCCESS;
+    }
+    return SDL_ENUM_CONTINUE;
+}
+
+/* the player's copy: --installer / --folder, the one the last build used (prefill: only for the setup page, never
+ * taken by itself), GTA2.exe beside the AppImage (any case), an installed GTA 2 folder beside it */
+static int find_installer(L *l, const char *arg, int prefill)
+{
+    FindFile f;
+    FindGame g;
+    char p[LP];
+    if (arg && is_input(arg)) {
         snprintf(l->input, sizeof l->input, "%s", arg);
         return 1;
     }
-    if (ini_get(l, "installer", p, sizeof p) && is_file(p)) {
+    if (prefill && ini_get(l, "installer", p, sizeof p) && is_input(p)) {
         snprintf(l->input, sizeof l->input, "%s", p);
         return 1;
     }
@@ -1245,6 +1314,13 @@ static int find_installer(L *l, const char *arg)
     SDL_EnumerateDirectory(l->root, find_cb, &f);
     if (f.found[0]) {
         snprintf(l->input, sizeof l->input, "%s", f.found);
+        return 1;
+    }
+    memset(&g, 0, sizeof g);
+    g.l = l;
+    SDL_EnumerateDirectory(l->root, game_dir_cb, &g);
+    if (g.found[0]) {
+        snprintf(l->input, sizeof l->input, "%s", g.found);
         return 1;
     }
     return 0;
@@ -1259,11 +1335,11 @@ static int sha_job(L *l, void *a)
     return file_sha256(s->path, s->hex) ? 0 : 1;
 }
 
-/* the build's stamp: the release and the installer it was built from (its SHA-256; "game folder" when built from the
- * game's files of an earlier build) */
+/* the build's stamp: the release and the game it was built from - game/gta2.exe's SHA-256 (the copy in the game's
+ * folder, the same whether it came from the installer, a folder or an earlier build) */
 static void stamp_text(L *l, const char *from, char *out, size_t n)
 {
-    snprintf(out, n, "%s\ninstaller %s\n", l->release, from && *from ? from : "?");
+    snprintf(out, n, "%s\ngta2.exe %s\n", l->release, from && *from ? from : "?");
 }
 
 /* built: the stamp's release is this one, the game and its files there */
@@ -1353,13 +1429,16 @@ int gta_launcher_main(const GtaLauncherConfig *cfg, int argc, char **argv)
         if (!strcmp(argv[i], "--repair")) repair = 1;
         else if (!strcmp(argv[i], "--setup")) setup = 1;      /* the setup page even when built */
         else if (!strcmp(argv[i], "--no-start")) no_start = 1;
-        else if ((!strcmp(argv[i], "--installer") || !strcmp(argv[i], "--image")) && i + 1 < argc) input_arg = argv[++i];
+        else if ((!strcmp(argv[i], "--installer") || !strcmp(argv[i], "--folder") || !strcmp(argv[i], "--image")) &&
+                 i + 1 < argc)
+            input_arg = argv[++i];     /* (a file or a folder either way: told apart by what it is) */
         /* (the setup page's choices, given on by the copy of the program in the target folder) */
         else if (!strcmp(argv[i], "--go")) go = 1;
         else if (!strcmp(argv[i], "--file") && i + 1 < argc) file_arg = argv[++i];
         /* the same as one argument each (RecompLauncher passes an optional file so: the argument dropped whole when
            the player picked none) */
         else if (!strncmp(argv[i], "--installer=", 12)) input_arg = argv[i] + 12;
+        else if (!strncmp(argv[i], "--folder=", 9)) input_arg = argv[i] + 9;
         else if (!strncmp(argv[i], "--image=", 8)) input_arg = argv[i] + 8;
         else if (!strncmp(argv[i], "--file=", 7)) file_arg = argv[i] + 7;
     }
@@ -1416,16 +1495,16 @@ int gta_launcher_main(const GtaLauncherConfig *cfg, int argc, char **argv)
     lg(&l, "%s: launcher in %s", cfg->window_title, l.root);
     l.ui = xr_setup_ui_open(cfg->window_title);
     xr_setup_ui_icon(l.ui, cfg->icon_bmp, cfg->icon_bmp_size);
-    xr_setup_ui_main_line(l.ui, cfg->input_label, cfg->input_filter_name, cfg->input_filter, "installer");
+    xr_setup_ui_main_line(l.ui, cfg->input_label, cfg->input_filter_name, cfg->input_filter, "installer or folder", 1);
 
     if (!read_trailer(&l, &payload_ofs)) {
         xr_setup_ui_message(l.ui, 1, PACKAGE_INCOMPLETE);
         goto out;
     }
     lg(&l, "release %s", l.release);
-    found = find_installer(&l, input_arg);
+    found = find_installer(&l, input_arg, 0);
     if (input_arg && !found)
-        lg(&l, "--installer %s: no such file", input_arg);
+        lg(&l, "--installer / --folder %s: no such file or folder", input_arg);
     join(p, sizeof p, l.game, "gta2.exe");
     game_ready = is_file(p);                /* the game's files of an earlier build (checked again below) */
     /* the port's own optional file (the translations): its line pre-filled with the copy in the game's folder */
@@ -1445,31 +1524,38 @@ int gta_launcher_main(const GtaLauncherConfig *cfg, int argc, char **argv)
     }
     if (!repair && !setup && built_already(&l)) {     /* built for this release: straight into the game */
         lg(&l, "built already");
+        progress_line(1.0, "Already built");
         ok = no_start || start_game(&l);
         goto out;
     }
     /* to be built: the setup page (the installer's line, the translations', the target folder, Go / Quit) - not when
        the game's files are there from an earlier build (a new release: built from them, no installer needed) */
     if (!go && (setup || !game_ready)) {
+        if (!found)
+            find_installer(&l, NULL, 1);    /* (the last one used: the line pre-filled, nothing more) */
         plain_dir(l.root, target, sizeof target);
         form = xr_setup_ui_form(l.ui, cfg->input, l.input, sizeof l.input, NULL, NULL, none, 0, target, sizeof target,
                                 &copy);
         if (form == 0)
             goto out;
         if (form > 0) {
-            found = is_file(l.input);
-            lg(&l, "installer chosen on the setup page: %s; target folder %s", l.input, target);
+            found = is_input(l.input);
+            lg(&l, "copy chosen on the setup page: %s; target folder %s", l.input, target);
             if (target[0] && !same_dir(target, l.root)) {     /* installed there: that copy of this program goes on */
                 ok = move_to_target(&l, target, file);
                 goto out;
             }
         }
     }
-    if (found)
+    if (found && is_dir(l.input))
+        lg(&l, "installed GTA 2 folder %s", l.input);
+    else if (found)
         lg(&l, "installer %s (%lld bytes)", l.input, (long long)file_size(l.input));
     else if (!game_ready) {
-        lg(&l, "no installer: give --installer <GTA2.exe> or put %s beside the program", cfg->input_file);
-        xr_setup_ui_message(l.ui, 1, "No GTA 2 installer was chosen (GTA2.exe, the 2004 Rockstar freeware release).");
+        lg(&l, "no copy: give --installer <GTA2.exe> or --folder <an installed GTA 2>, or put %s beside the program",
+           cfg->input_file);
+        xr_setup_ui_message(l.ui, 1, "No copy of GTA 2 was chosen: the GTA 2 freeware installer (GTA2.exe, the 2004 "
+                                     "Rockstar release) or a folder with that GTA 2 installed.");
         goto out;
     }
     if (repair)
@@ -1499,49 +1585,63 @@ int gta_launcher_main(const GtaLauncherConfig *cfg, int argc, char **argv)
     SDL_CreateDirectory(l.build);
     SDL_CreateDirectory(l.obj);
     SDL_CreateDirectory(l.work);
-    /* the game's files: those of an earlier build when they are the supported gta2.exe (a new release, a repair
-       without the installer), else unpacked from the installer - the right one, else asked for again */
+    /* the game's files: game/ when it holds the supported gta2.exe (a new release, --repair: built from game/ alone,
+       the installer or folder not read again - the maintainer's rule), else unpacked from the installer / copied
+       from the folder - the right one, else asked for again */
     {
         LiftArg la;
         rc = 1;
-        if (game_ready && !(repair && found)) {
+        if (game_ready) {
             memset(&la, 0, sizeof la);
             la.only = "check";
             rc = run_job(&l, "Checking the game's files", 0.10, 0.01, lift_job, &la, NULL);
-            if (rc == 0)
-                snprintf(from_sha, sizeof from_sha, "game folder");
+            if (rc == 0) {
+                ShaArg sa;
+                memset(&sa, 0, sizeof sa);
+                join(p, sizeof p, l.game, "gta2.exe");
+                sa.path = p;
+                if (run_job(&l, "Checking the game's files", 0.11, 0.01, sha_job, &sa, NULL) == 0)
+                    snprintf(from_sha, sizeof from_sha, "%s", sa.hex);
+            }
         }
         while (rc != 0) {
             ShaArg sa;
             if (!found) {
                 xr_setup_ui_message(l.ui, 1, "The game's files are missing or damaged - choose your GTA 2 installer "
-                                             "(GTA2.exe) on the setup page (start with --setup).");
+                                             "(GTA2.exe) or GTA 2 folder on the setup page (start with --setup).");
                 goto out;
             }
+            const int folder = is_dir(l.input);
             memset(&la, 0, sizeof la);
-            la.only = "extract";
-            rc = run_job(&l, "Unpacking the game's files from the installer", 0.10, 0.04, lift_job, &la, NULL);
+            la.only = folder ? "extract-folder" : "extract";
+            rc = run_job(&l, folder ? "Copying the game's files from your GTA 2 folder"
+                                    : "Unpacking the game's files from the installer", 0.10, 0.04, lift_job, &la, NULL);
             if (rc == 0) {
+                char exe[LP];
+                (void)folder;
                 memset(&sa, 0, sizeof sa);
-                sa.path = l.input;
-                if (run_job(&l, "Checking the installer", 0.14, 0.01, sha_job, &sa, NULL) == 0)
+                join(exe, sizeof exe, l.game, "gta2.exe");
+                sa.path = exe;                        /* the stamp: game/gta2.exe's hash (its copy, checked) */
+                if (run_job(&l, "Checking the game's files", 0.14, 0.01, sha_job, &sa, NULL) == 0)
                     snprintf(from_sha, sizeof from_sha, "%s", sa.hex);
                 ini_set(&l, "installer", l.input);
                 break;
             }
             if (rc != WRONG_INPUT || cancelled(&l)) {
-                xr_setup_ui_message(l.ui, 1, "Unpacking the installer failed - see data/build/lift.log.");
+                xr_setup_ui_message(l.ui, 1, "Setting up the game's files failed - see data/build/lift.log.");
                 goto out;
             }
             lg(&l, "%s: %s", l.input, cfg->wrong_input);
-            if (xr_no_dialogs())
+            if (xr_no_dialogs()) {
+                xr_setup_ui_message(l.ui, 1, cfg->wrong_input);
                 goto out;
+            }
             plain_dir(l.root, target, sizeof target);
             form = xr_setup_ui_form(l.ui, cfg->input, l.input, sizeof l.input, cfg->wrong_input, NULL, none, 0, target,
                                     sizeof target, &copy);
             if (form <= 0)
                 goto out;
-            found = is_file(l.input);
+            found = is_input(l.input);
             rc = 1;
         }
     }
@@ -1550,6 +1650,7 @@ int gta_launcher_main(const GtaLauncherConfig *cfg, int argc, char **argv)
         memset(&la, 0, sizeof la);
         la.skip[0] = "check";
         la.skip[1] = "extract";
+        la.skip[2] = "extract-folder";
         /* (no time estimates in the steps' texts: they only worry - the maintainer 2026-11-20) */
         if (run_job(&l, "Translating the game's code", 0.15, 0.13, lift_job, &la, prog_frac)) {
             xr_setup_ui_message(l.ui, 1, "Translating the game's code failed - see data/build/lift.log.");
@@ -1595,6 +1696,7 @@ int gta_launcher_main(const GtaLauncherConfig *cfg, int argc, char **argv)
     join(p, sizeof p, l.build, "stamp.txt");
     write_text(p, stamp_want);
     lg(&l, "built %s", l.out);
+    progress_line(1.0, "Built");
     ok = no_start || start_game(&l);
 out:
     if (cancelled(&l)) {
