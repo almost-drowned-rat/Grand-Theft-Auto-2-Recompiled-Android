@@ -1001,10 +1001,10 @@ public class Gta2Activity extends SDLActivity {
             public String title() { return "Shaders"; }
             public java.util.List<SideMenu.Item> items() {
                 java.util.List<SideMenu.Item> l = new java.util.ArrayList<>();
-                l.add(new SideMenu.Item("Import shader pack (.zip)...") {
+                l.add(new SideMenu.Item("Import shader pack (.zip file)...") {
                     @Override void run() { mMenu.close(); pickShaders(false); }
                 });
-                l.add(new SideMenu.Item("Import folder...") { @Override void run() { mMenu.close(); pickShaders(true); } });
+                l.add(new SideMenu.Item("Import unpacked shader folder...") { @Override void run() { mMenu.close(); pickShaders(true); } });
                 for (final ShaderImport.Pack k : ShaderImport.packs(shaderDir()))
                     l.add(new SideMenu.Item(k.name + "  - " + MediaImport.mb(k.bytes)) {
                         @Override void run() { confirmRemoveShaders(k); }
@@ -1067,7 +1067,7 @@ public class Gta2Activity extends SDLActivity {
         if (p == null) { message("Shaders", "That is not a .zip file - a shader pack comes as a .zip or a folder."); return; }
         if (folder && p.presets == 0) {
             message("Shaders", "There are no shader presets (.slangp) in \"" + p.name + "\" or its sub folders. A "
-                    + "shader pack in a .zip: use \"Import shader pack (.zip)...\".");
+                    + "shader pack in a .zip: use \"Import shader pack (.zip file)...\".");
             return;
         }
         long free = shaderDir().getParentFile().getUsableSpace();
