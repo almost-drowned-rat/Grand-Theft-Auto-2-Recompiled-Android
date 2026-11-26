@@ -149,14 +149,12 @@ static mline l_browse[1024];
 static char g_browse_title[64] = "SHADER PACKS";
 static const gta2_shader_item *g_browse_items;
 /* GAMEPLAY (maintainer 2026-11-26; PEDESTRIANS / TRAFFIC / SPRINT follow) */
-/* LANGUAGE is GAMEPLAY's last line (no sub-page, maintainer 2026-11-26); once it differs from the language the game
- * started with, RESTART NOW / RESTART LATER are the two lines below it - LATER hides them until the page opens
- * again, so the question comes again */
+/* LANGUAGE is GAMEPLAY's last line (no sub-page, maintainer 2026-11-26); leaving GAMEPLAY with a language other
+ * than the one the game started with opens the pop-up RESTART? (RESTART NOW / RESTART LATER) - every time */
 static const mline l_gameplay[] = { { NULL, L_OPT, OPT_PEDESTRIANS }, { NULL, L_OPT, OPT_TRAFFIC }, { NULL, L_OPT, OPT_SPRINT },
-                                    { NULL, L_OPT, OPT_MORE_BLOOD }, { "LANGUAGE", L_LANG, 0 },
-                                    { "RESTART NOW", L_ACTION, ACT_RESTART_NOW },
-                                    { "RESTART LATER", L_ACTION, ACT_RESTART_LATER } };
-#define N_GAMEPLAY ((int)(sizeof l_gameplay / sizeof l_gameplay[0]) - 2)   /* without the two RESTART lines */
+                                    { NULL, L_OPT, OPT_MORE_BLOOD }, { "LANGUAGE", L_LANG, 0 } };
+static const mline l_lang_restart[] = { { "RESTART NOW", L_ACTION, ACT_RESTART_NOW },
+                                        { "RESTART LATER", L_ACTION, ACT_RESTART_LATER } };
 static int g_map_keyboard;          /* DEVICE: 0 controller, 1 keyboard */
 static int g_wait = -1;             /* function waiting for a button / key */
 static uint32_t g_wait_t0;
@@ -186,7 +184,8 @@ static mpage g_pages[VP_COUNT] = {
     [VP_PADVIEW] = { "CONTROLLER LAYOUT", VP_CONTROLS, l_padview, 1 },
     [VP_OVERVIEW] = { "CONTROL OVERVIEW", VP_CONTROLS, l_overview, 0 },
     [VP_MAPPING] = { "CUSTOM MAPPING", VP_CONTROLS, l_mapping, 0 },
-    [VP_GAMEPLAY] = { "GAMEPLAY", VP_ROOT, l_gameplay, N_GAMEPLAY },
+    [VP_GAMEPLAY] = { "GAMEPLAY", VP_ROOT, l_gameplay, 5 },
+    [VP_LANG]    = { "RESTART?", VP_ROOT, l_lang_restart, 2 },   /* the pop-up after GAMEPLAY */
     [VP_SHADERS] = { "SHADERS", VP_ROOT, l_shaders, 4 },
     [VP_SHPARAMS] = { "SHADER PARAMETERS", VP_SHADERS, l_shparams, 0 },
     [VP_SHBROWSE] = { g_browse_title, VP_SHADERS, l_browse, 0 },
@@ -215,7 +214,6 @@ static const char g_lang_code[] = "efgisprnc";
 static const char *const g_lang_name[] = { "ENGLISH", "FRANCAIS", "DEUTSCH", "ITALIANO", "ESPANOL", "POLSKI",
                                            "RUSSKIJ", "NIHONGO", "ZHONGWEN" };
 static int g_lang_have[N_LANG], g_lang_start = -1, g_lang_sel;
-static int g_lang_later;   /* RESTART LATER: the RESTART lines hidden until GAMEPLAY opens again */
 
 static uint32_t fe(void) { return wr_rd32(FE_PTR); }
 static uint32_t port_page(uint32_t f) { return f + FE_PAGES + PORT_PAGE * PAGE_SIZE; }
@@ -268,7 +266,6 @@ static void lang_step(int d)
         if (g_lang_have[g_lang_sel])
             break;
     }
-    g_lang_later = 0;
     char v[2] = { g_lang_code[g_lang_sel], 0 };
     wr_reg_set_str(REG_GTA2 "\\Option", "language", v);
 }
@@ -451,8 +448,6 @@ static void build_cheat_page(void)
 
 static void open_vpage(int vp)
 {
-    if (vp == VP_GAMEPLAY)
-        g_lang_later = 0;   /* a changed language asks again */
     g_cur_of[g_vp] = g_cur;
     g_vp = vp;
     g_cur = 0;
@@ -492,11 +487,6 @@ void gta2_menu_background(void)
         wr_wr8(f + FE_BG, 0);
 }
 
-static void lang_page_update(void)
-{
-    int changed = g_lang_start >= 0 && g_lang_sel != g_lang_start;
-    g_pages[VP_GAMEPLAY].n = N_GAMEPLAY + (changed && !g_lang_later ? 2 : 0);
-}
 
 /* Y (pad) / Home (keyboard): every line of the page back to its default */
 static void page_defaults(X86Ctx *ctx)
@@ -564,6 +554,11 @@ void gta2_menu_after_input(void)
 static void go_back(X86Ctx *ctx, uint32_t f)
 {
     int parent = g_pages[g_vp].parent;
+    if (g_vp == VP_GAMEPLAY && g_lang_start >= 0 && g_lang_sel != g_lang_start) {   /* the pop-up RESTART? */
+        open_vpage(VP_LANG);
+        wr_wr32(FE_SOUND, SND_SELECT);
+        return;
+    }
     if (g_vp == VP_ROOT && g_host == HOST_PAUSE)
         parent = VP_PAUSE;
     wr_wr32(FE_SOUND, SND_BACK);
@@ -732,9 +727,7 @@ static void menu_keys(X86Ctx *ctx, uint32_t f, int left, int right, int up, int 
         } else if (l->kind == L_ACTION && l->arg == ACT_RESTART_NOW) {
             wr_restart();
         } else if (l->kind == L_ACTION && l->arg == ACT_RESTART_LATER) {
-            g_lang_later = 1;   /* asked again the next time GAMEPLAY opens */
-            g_cur = N_GAMEPLAY - 1;   /* back on LANGUAGE */
-            wr_wr32(FE_SOUND, SND_SELECT);
+            go_back(ctx, f);   /* asked again the next time GAMEPLAY is left */
         } else if (l->kind == L_SHPRESET) {
             gta2_shader_browse_open();
             build_browse_page();
@@ -793,7 +786,6 @@ static void menu_keys(X86Ctx *ctx, uint32_t f, int left, int right, int up, int 
     } else if (left || right) {
         change(ctx, l, right ? 1 : -1);
     }
-    lang_page_update();
     pg = &g_pages[g_vp];
     if (g_cur >= pg->n)
         g_cur = pg->n - 1;
@@ -829,7 +821,6 @@ int gta2_menu_input(X86Ctx *ctx)
             uint32_t a = PORT_PAGE;
             call_this(ctx, FN_GOTO_PAGE, f, 1, &a);
             lang_init();
-        g_lang_later = 0;
             g_vp = VP_EXIT;
             g_cur = g_top = 0;   /* NO */
             g_last_page = PORT_PAGE;
@@ -866,7 +857,6 @@ int gta2_menu_input(X86Ctx *ctx)
     }
     if (g_last_page != PORT_PAGE) {   /* just entered from the main menu */
         lang_init();
-        g_lang_later = 0;
         g_vp = VP_ROOT;
         g_cur = g_top = 0;
         g_last_page = PORT_PAGE;
@@ -1009,6 +999,11 @@ void gta2_menu_draw(X86Ctx *ctx)
         put_text(ctx, "...", xl, Y_FIRST + VISIBLE * Y_STEP - 6, font, SCALE);
     if (g_vp == VP_SHADERS && gta2_shader_hint())
         put_text(ctx, gta2_shader_hint(), xl, Y_FIRST + 4 * Y_STEP, font, SCALE);
+    if (g_vp == VP_LANG)
+    {   /* two lines: one is too wide for the 4:3 page */
+        put_text(ctx, "THE NEW LANGUAGE", xl, Y_FIRST + 3 * Y_STEP, font, SCALE);
+        put_text(ctx, "NEEDS A RESTART", xl, Y_FIRST + 4 * Y_STEP, font, SCALE);
+    }
 }
 
 /* After the game read its Debug flags at start: the saved cheats. */
@@ -1102,7 +1097,6 @@ void gta2_pause_tick(X86Ctx *ctx)
         if (wr_rd32(g) != 2)
             return;   /* the game would not pause (a state change in progress) */
         lang_init();
-        g_lang_later = 0;
         build_cheat_page();
         g_pause_open = 1;
         g_host = HOST_PAUSE;
@@ -1163,6 +1157,11 @@ void gta2_pause_draw(X86Ctx *ctx)
         put_text(ctx, "...", x0, y0 + VISIBLE * 24 - 6, P_FONT, 0x4000);
     if (g_vp == VP_SHADERS && gta2_shader_hint())
         put_text(ctx, gta2_shader_hint(), x0, y0 + 3 * 24, P_FONT, 0x4000);
+    if (g_vp == VP_LANG)
+    {
+        put_text(ctx, "THE NEW LANGUAGE", x0, y0 + 3 * 24, P_FONT, 0x4000);
+        put_text(ctx, "NEEDS A RESTART", x0, y0 + 4 * 24, P_FONT, 0x4000);
+    }
 }
 
 
