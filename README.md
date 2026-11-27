@@ -21,8 +21,8 @@ compiled **on your device** once, and then it plays - with a gamepad, a handheld
 
 ## Status
 
-**v0.4.2** - based on
-[Grand Theft Auto 2 Recompiled v0.7.2](https://github.com/almost-drowned-rat/Grand-Theft-Auto-2-Recompiled/releases/tag/v0.7.2)
+**v0.5.0** - based on
+[Grand Theft Auto 2 Recompiled v0.8.0](https://github.com/almost-drowned-rat/Grand-Theft-Auto-2-Recompiled/releases/tag/v0.8.0)
 (Windows / Linux). Download the APK from
 [Releases](https://github.com/almost-drowned-rat/Grand-Theft-Auto-2-Recompiled-Android/releases) and install it
 (Android 10+, arm64). It is signed with the project's own key - every later update installs over it and keeps your
@@ -65,12 +65,15 @@ original. After an app update the game is built again from that copy - no need t
 - **BACK** (the system back gesture / button) opens the side menu: **Back to the game**, **Controls** (touch
   buttons, layout, size, opacity), **Settings** (Saves: import / export, Export log, Soundtracks, Shaders, Graphics driver).
 - **RECOMP OPTIONS** in the game's own options menu: render resolution, texture filtering, frame rate (30 / 60 /
-  120 interpolated), aspect ratio (4:3 / 16:9 / 16:10 / 21:9, real widescreen), V-Sync, FPS counter, the old GTA 2
-  Manager's gameplay settings, cheats, language, controls, MIXTAPE (your own music as a radio station: put album
+  120 interpolated), aspect ratio (4:3 / 16:9 / 16:10 / 21:9, real widescreen), V-Sync, FPS counter, enhancements
+  (a **minimap** with its own switches and a map of the whole district in the pause menu, a manual camera, the old
+  GTA 2 Manager's gameplay settings), cheats, language, controls (classic / modern / own mapping in three profiles),
+  MIXTAPE (your own music as a radio station: put album
   folders into `media/`), shaders (RetroArch slang shader packs: BACK > Settings > Shaders imports a .zip or a
   folder into `shader/`).
 - The game's folder on the device: `Android/data/io.github.almostdrownedrat.gta2/files/` - `game/` (the game's
-  files), `saves/`, `data/` (logs: `data/gta2.log`), `media/` (your music), `shader/` (your shader packs).
+  files), `saves/`, `data/` (logs: `data/gta2.log`), `media/` (your music), `shader/` (your shader packs), `mods/` (every folder in it is one mod; on Android 11+ a
+  file manager may not reach `Android/data` - copy mods there from a PC over USB).
 
 ## Building
 
