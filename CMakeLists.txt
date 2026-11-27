@@ -62,6 +62,8 @@ set(GTA2_PORT_SOURCES
     src/gta2_mixtape.c
     src/gta2_translations.c
     src/gta2_text.c
+    src/gta2_radar.c
+    src/gta2_radar_map.c
     src/render/vid.c
     src/render/gbh.c
     src/render/bink_buffer.c

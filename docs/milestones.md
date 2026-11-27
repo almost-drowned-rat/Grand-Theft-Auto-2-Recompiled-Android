@@ -88,6 +88,16 @@ Targets: Windows, Linux, Android. Renderer: Vulkan 1.1 baseline. Toolkit: winrec
       1..11 all named (8..11 heard with GTA2_RADIO_TEST).
 - [x] (was:) Own milestone (source texts: the game's e.gxt / bob_e.gxt, English, with s.gxt as a cross-check - the freeware edition ships only EN + ES; maintainer 2026-11-26: "das reicht"): complete translation of ALL story content and UI (radio station names and their music lines stay English everywhere; maintainer 2026-11-26) (game texts + our menus/launcher) into EN, FR, DE, IT, ES, JA, ZH, RU, PL; own text renderer + font (Latin-Ext, Cyrillic, CJK); shipped as a translations pak next to the launcher (like ZOE-subtitles.pak); LANGUAGE in the RECOMP menu
 
+## v0.8.0 — Minimap, controls, camera, mods (maintainer 2026-11-27, from issues #1-#3)
+- [x] MINIMAP: own radar from the level's .gmp/.sty, blips per category, POLICE, PAUSE MAP with legend, NAVIGATION
+      ARROWS, free position (docs/re/minimap.md)
+- [x] ENHANCEMENTS (was GAMEPLAY): LANGUAGE, MINIMAP, MANUAL CAMERA, PEDESTRIANS, TRAFFIC, SPRINT, MORE BLOOD
+- [x] MANUAL CAMERA (off by default): CAMERA / ZOOM IN / ZOOM OUT buttons (docs/re/camera_distance.md)
+- [x] CUSTOM MAPPING: MODERN by function (on foot / in a car), groups with headings, PROFILE STOCK / 1 / 2 / 3
+- [x] mods/: one folder per mod read before the game's files (winrecomp wr_path_add_mod_dirs)
+- [ ] Texture packs in mods/textures (postponed by the maintainer)
+- [ ] Ray tracing: own Vulkan path, all RT GPUs (decided 2026-11-27, start after the maintainer's go)
+
 ## M9 — Multiplayer (optional)
 - [ ] DirectPlay (DPLAYX) -> own network layer (LAN/IP)
 

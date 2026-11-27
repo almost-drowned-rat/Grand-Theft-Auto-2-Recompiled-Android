@@ -28,6 +28,23 @@ enum {
     OPT_TRAFFIC,           /* 1X / 2X / 3X / 4X */
     OPT_SPRINT,            /* OFF / ON */
     OPT_MORE_BLOOD,        /* OFF / ON: blood stays longer, dries, and the bodies stay with it */
+    OPT_CAMERA_DISTANCE,   /* 1.0X .. 2.0X: the view further out (issue #2; docs/re/camera_distance.md) */
+    OPT_MANUAL_CAMERA,     /* OFF / ON: the CAMERA / ZOOM IN / ZOOM OUT buttons step CAMERA DISTANCE in play */
+    /* GAMEPLAY > MINIMAP (maintainer 2026-11-27: one page, an ON/OFF switch per element) */
+    OPT_MINIMAP,           /* OFF / ON */
+    OPT_MINIMAP_SIZE,      /* SMALL / MEDIUM / LARGE */
+    OPT_MINIMAP_ZOOM,      /* NEAR / MEDIUM / FAR */
+    OPT_MINIMAP_X,         /* 0% .. 100% in 2.5% steps: left .. right (maintainer: free position) */
+    OPT_MINIMAP_Y,         /* 0% .. 100%: top .. bottom */
+    OPT_PAUSE_MAP,         /* OFF / ON: MAP line in the pause menu, the whole district */
+    OPT_NAV_ARROWS,        /* OFF / ON / NEAR TARGET: the game's own arrows */
+    OPT_BLIP_MISSIONS,     /* OFF / ON: phones + mission targets */
+    OPT_BLIP_PLACES,       /* OFF / ON: churches (save) + garages */
+    OPT_BLIP_TOKENS,       /* OFF / ON */
+    OPT_BLIP_WEAPONS,      /* OFF / ON */
+    OPT_BLIP_BONUSES,      /* OFF / ON: power-ups */
+    OPT_BLIP_FRENZY,       /* OFF / ON: kill frenzies, also on cars */
+    OPT_BLIP_POLICE,       /* OFF / ON: police / law cars (maintainer 2026-11-27) */
     OPT_COUNT
 };
 

@@ -19,4 +19,7 @@ extern int g_gta2_peds_pending;
 int  gta2_traffic_factor(void);
 void gta2_traffic_tick(void);            /* once per game tick */
 
+/* CAMERA DISTANCE (issue #2): the game's target zoom constants scaled, docs/re/camera_distance.md */
+void gta2_camera_distance_apply(void);   /* every frame (cheap): writes only on a change */
+
 #endif

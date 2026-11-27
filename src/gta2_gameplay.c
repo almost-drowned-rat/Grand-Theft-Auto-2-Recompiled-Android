@@ -351,3 +351,48 @@ void gta2_traffic_tick(void)
     uint32_t c = wr_rd16(p + 0x680) + (uint32_t)(k - 1);
     wr_wr16(p + 0x680, (uint16_t)(c > 100 ? 100 : c));
 }
+
+/* ---- CAMERA DISTANCE (issue #2, maintainer 2026-11-27; docs/re/camera_distance.md) -------------
+ * The follow camera aims at one zoom constant, [0x5E3EB4] (0.8875, Q14 0x38CC, on foot and in a car),
+ * and [0x5E3ECC] for a dead player (3.55). Both are only read by the camera code; dividing them by F
+ * moves the view out by F, the smoothing glides there, and the view rect - drawing, culling, the
+ * spawn ring, removal - follows by itself. The live camera fields are never touched. */
+#define ZOOM_WALK 0x005E3EB4u
+#define ZOOM_DEAD 0x005E3ECCu
+/* The camera's lead (car look-ahead, look-around) is in screen pixels, so at F it lands F times further in
+ * the world, but the chase that follows it (sub_0041F2F0 -> sub_00472670) is tuned in world units: it fell
+ * behind, overshot and restarted all the time - the restless camera the maintainer saw. Its x/y acceleration
+ * and top-speed factor (read only there) are scaled by F too, so on screen it moves as at 1.0X
+ * (docs/re/camera_distance.md 6). */
+#define CHASE_ACCEL 0x005E3F38u
+#define CHASE_TOP   0x005E3DCCu
+
+void gta2_camera_distance_apply(void)
+{
+    static const uint32_t f_q14[] = { 0x4000, 0x5000, 0x6000, 0x7000, 0x8000 };   /* 1.0 .. 2.0 */
+    static uint32_t orig_walk, orig_dead, orig_accel, orig_top;
+    static int applied = -1;
+    /* the step the camera buttons set; MANUAL CAMERA off = the game's own distance (maintainer 2026-11-27:
+     * no CAMERA DISTANCE line in the menu) */
+    int c = opt_get(OPT_MANUAL_CAMERA) ? opt_get(OPT_CAMERA_DISTANCE) : 0;
+    if (c == applied || !wr_mem_valid(ZOOM_WALK, 4) || !wr_mem_valid(ZOOM_DEAD, 4) ||
+        !wr_mem_valid(CHASE_ACCEL, 4) || !wr_mem_valid(CHASE_TOP, 4))
+        return;
+    if (!orig_walk) {   /* the game's own values, read before the first change */
+        orig_walk = wr_rd32(ZOOM_WALK);
+        orig_dead = wr_rd32(ZOOM_DEAD);
+        orig_accel = wr_rd32(CHASE_ACCEL);
+        orig_top = wr_rd32(CHASE_TOP);
+        if (!orig_walk || !orig_dead)
+            return;
+    }
+    uint32_t f = f_q14[c < 0 || c > 4 ? 0 : c];
+    wr_wr32(ZOOM_WALK, (uint32_t)(((uint64_t)orig_walk << 14) / f));
+    wr_wr32(ZOOM_DEAD, (uint32_t)(((uint64_t)orig_dead << 14) / f));
+    wr_wr32(CHASE_ACCEL, (uint32_t)(((uint64_t)orig_accel * f) >> 14));
+    wr_wr32(CHASE_TOP, (uint32_t)(((uint64_t)orig_top * f) >> 14));
+    applied = c;
+    wr_log("camera distance: %s (zoom 0x%X -> 0x%X, chase 0x%X/0x%X -> 0x%X/0x%X)",
+           opt_choice_label(OPT_CAMERA_DISTANCE, c), orig_walk, wr_rd32(ZOOM_WALK), orig_accel, orig_top,
+           wr_rd32(CHASE_ACCEL), wr_rd32(CHASE_TOP));
+}

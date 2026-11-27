@@ -28,6 +28,7 @@
 #include "gta2_input.h"
 #include "gta2_padview.h"
 #include "gta2_mixtape.h"
+#include "gta2_radar.h"
 #include <ctype.h>
 #include "gta2_shaders.h"
 #include "gta2_gameplay.h"
@@ -67,8 +68,10 @@ enum { SND_UP = 1, SND_DOWN = 2, SND_VALUE = 3, SND_SELECT = 5, SND_BACK = 6 };
 /* ---- pages -------------------------------------------------------------------------------- */
 
 enum { VP_ROOT, VP_SOUND, VP_DISPLAY, VP_PERF, VP_LANG, VP_CONTROLS, VP_CHEATS, VP_EXIT, VP_PAUSE, VP_QUIT, VP_RESTART,
-       VP_QUITPROG, VP_MAPPING, VP_GAMEPLAY, VP_SHADERS, VP_SHBROWSE, VP_SHPARAMS, VP_OVERVIEW, VP_PADVIEW, VP_SOUNDTRACK, VP_COUNT };
-enum { L_PAGE, L_OPT, L_VOL, L_CHEAT, L_LANG, L_ACTION, L_BACK, L_DEVICE, L_BIND, L_SHON, L_SHPRESET, L_SHITEM, L_SHRES, L_SHPARAMS, L_SHPARAM, L_OVR, L_PADVIEW, L_MTSRC, L_MTMODE };
+       VP_QUITPROG, VP_MAPPING, VP_GAMEPLAY, VP_SHADERS, VP_SHBROWSE, VP_SHPARAMS, VP_OVERVIEW, VP_PADVIEW, VP_SOUNDTRACK,
+       VP_MINIMAP, VP_MAP, VP_COUNT };
+enum { L_PAGE, L_OPT, L_VOL, L_CHEAT, L_LANG, L_ACTION, L_BACK, L_DEVICE, L_BIND, L_SHON, L_SHPRESET, L_SHITEM, L_SHRES, L_SHPARAMS, L_SHPARAM, L_OVR, L_PADVIEW, L_MTSRC, L_MTMODE, L_PROFILE,
+       L_HEAD /* a heading or an empty line: not chosen, the cursor passes over it */ };
 enum { ACT_UNLOCK_AREAS = 1, ACT_RESTART_NOW, ACT_RESTART_LATER, ACT_EXIT_NO, ACT_EXIT_YES, ACT_RESUME, ACT_QUIT_YES,
        ACT_RESTART_YES, ACT_NO, ACT_QUITPROG_YES, ACT_TEST_PICTURE };
 enum { VOL_MUSIC, VOL_SFX };
@@ -108,7 +111,7 @@ static const cheat g_cheats[] = {
 static const mline l_root[] = {
     { "RENDERING", L_PAGE, VP_DISPLAY }, { "SHADERS", L_PAGE, VP_SHADERS },
     { "PERFORMANCE", L_PAGE, VP_PERF }, { "SOUND", L_PAGE, VP_SOUND },
-    { "CONTROLS", L_PAGE, VP_CONTROLS }, { "GAMEPLAY", L_PAGE, VP_GAMEPLAY },
+    { "CONTROLS", L_PAGE, VP_CONTROLS }, { "ENHANCEMENTS", L_PAGE, VP_GAMEPLAY },
     { "CHEATS", L_PAGE, VP_CHEATS },
 };
 static const mline l_sound[] = {
@@ -139,7 +142,7 @@ static int g_pv_car;   /* CONTROLLER LAYOUT shows IN A CAR */
 static mline l_overview[32];
 /* CUSTOM MAPPING (as option-p): DEVICE on top, then every function and its
  * button / key; Enter waits for the new one (5 s, keyboard Esc cancels) */
-static mline l_mapping[1 + GTA2_BIND_N];
+static mline l_mapping[48];   /* DEVICE, PROFILE, an empty line, the groups (gta2_bind_row) */
 /* SHADERS (RetroArch slang; gta2_shaders.c) and its preset browser */
 /* the N64 recomps' layout: Shader / Shader selection > / Shader resolution / Shader parameters > */
 /* + TAKE TEST PICTURE in the pause menu only (the game's picture behind it; maintainer 2026-11-26: the test picture
@@ -152,11 +155,23 @@ static mline l_shparams[128];
 static mline l_browse[1024];
 static char g_browse_title[64] = "SHADER PACKS";
 static const gta2_shader_item *g_browse_items;
-/* GAMEPLAY (maintainer 2026-11-26; PEDESTRIANS / TRAFFIC / SPRINT follow) */
-/* LANGUAGE is GAMEPLAY's last line (no sub-page, maintainer 2026-11-26); leaving GAMEPLAY with a language other
- * than the one the game started with opens the pop-up RESTART? (RESTART NOW / RESTART LATER) - every time */
-static const mline l_gameplay[] = { { NULL, L_OPT, OPT_PEDESTRIANS }, { NULL, L_OPT, OPT_TRAFFIC }, { NULL, L_OPT, OPT_SPRINT },
-                                    { NULL, L_OPT, OPT_MORE_BLOOD }, { "LANGUAGE", L_LANG, 0 } };
+/* ENHANCEMENTS (was GAMEPLAY, renamed by the maintainer 2026-11-27; VP_GAMEPLAY keeps its name in the code) */
+/* Its order (maintainer 2026-11-27): LANGUAGE, MINIMAP, MANUAL CAMERA, then the rest; no CAMERA DISTANCE line
+ * (the camera buttons set it). LANGUAGE has no sub-page; leaving the page with a language other than the one
+ * the game started with opens the pop-up RESTART? (RESTART NOW / RESTART LATER) - every time */
+static const mline l_gameplay[] = { { "LANGUAGE", L_LANG, 0 }, { "MINIMAP", L_PAGE, VP_MINIMAP },
+                                    { NULL, L_OPT, OPT_MANUAL_CAMERA },
+                                    { NULL, L_OPT, OPT_PEDESTRIANS }, { NULL, L_OPT, OPT_TRAFFIC },
+                                    { NULL, L_OPT, OPT_SPRINT }, { NULL, L_OPT, OPT_MORE_BLOOD } };
+/* GAMEPLAY > MINIMAP (maintainer 2026-11-27): the radar's look, then an ON/OFF switch per element */
+static const mline l_minimap[] = {
+    { NULL, L_OPT, OPT_MINIMAP }, { NULL, L_OPT, OPT_MINIMAP_SIZE }, { NULL, L_OPT, OPT_MINIMAP_ZOOM },
+    { NULL, L_OPT, OPT_MINIMAP_X }, { NULL, L_OPT, OPT_MINIMAP_Y },
+    { NULL, L_OPT, OPT_PAUSE_MAP }, { NULL, L_OPT, OPT_NAV_ARROWS },
+    { NULL, L_OPT, OPT_BLIP_MISSIONS }, { NULL, L_OPT, OPT_BLIP_PLACES }, { NULL, L_OPT, OPT_BLIP_TOKENS },
+    { NULL, L_OPT, OPT_BLIP_WEAPONS }, { NULL, L_OPT, OPT_BLIP_BONUSES }, { NULL, L_OPT, OPT_BLIP_FRENZY },
+    { NULL, L_OPT, OPT_BLIP_POLICE },
+};
 static const mline l_lang_restart[] = { { "RESTART NOW", L_ACTION, ACT_RESTART_NOW },
                                         { "RESTART LATER", L_ACTION, ACT_RESTART_LATER } };
 static int g_map_keyboard;          /* DEVICE: 0 controller, 1 keyboard */
@@ -174,6 +189,13 @@ static const mline l_pause[] = {
     { "RESTART AREA", L_PAGE, VP_RESTART }, { "EXIT GAME", L_PAGE, VP_QUITPROG },
     { "EXIT TO MAIN MENU", L_PAGE, VP_QUIT },
 };
+/* ... with MINIMAP > PAUSE MAP on: MAP under RESUME, the whole district (maintainer 2026-11-27) */
+static const mline l_pause_map[] = {
+    { "RESUME", L_ACTION, ACT_RESUME }, { "MAP", L_PAGE, VP_MAP }, { "RECOMP OPTIONS", L_PAGE, VP_ROOT },
+    { "RESTART AREA", L_PAGE, VP_RESTART }, { "EXIT GAME", L_PAGE, VP_QUITPROG },
+    { "EXIT TO MAIN MENU", L_PAGE, VP_QUIT },
+};
+static const mline l_map[] = { { "BACK", L_BACK, 0 } };
 static const mline l_quitprog[] = { { "NO", L_ACTION, ACT_NO }, { "YES", L_ACTION, ACT_QUITPROG_YES } };
 static const mline l_quit[] = { { "NO", L_ACTION, ACT_NO }, { "YES", L_ACTION, ACT_QUIT_YES } };
 static const mline l_restart[] = { { "NO", L_ACTION, ACT_NO }, { "YES", L_ACTION, ACT_RESTART_YES } };
@@ -188,7 +210,8 @@ static mpage g_pages[VP_COUNT] = {
     [VP_PADVIEW] = { "CONTROLLER LAYOUT", VP_CONTROLS, l_padview, 1 },
     [VP_OVERVIEW] = { "CONTROL OVERVIEW", VP_CONTROLS, l_overview, 0 },
     [VP_MAPPING] = { "CUSTOM MAPPING", VP_CONTROLS, l_mapping, 0 },
-    [VP_GAMEPLAY] = { "GAMEPLAY", VP_ROOT, l_gameplay, 5 },
+    [VP_GAMEPLAY] = { "ENHANCEMENTS", VP_ROOT, l_gameplay, (int)(sizeof l_gameplay / sizeof l_gameplay[0]) },
+    [VP_MINIMAP] = { "MINIMAP", VP_GAMEPLAY, l_minimap, (int)(sizeof l_minimap / sizeof l_minimap[0]) },
     [VP_LANG]    = { "RESTART?", VP_ROOT, l_lang_restart, 2 },   /* the pop-up after GAMEPLAY */
     [VP_SHADERS] = { "SHADERS", VP_ROOT, l_shaders, 4 },
     [VP_SHPARAMS] = { "SHADER PARAMETERS", VP_SHADERS, l_shparams, 0 },
@@ -196,6 +219,7 @@ static mpage g_pages[VP_COUNT] = {
     [VP_CHEATS]  = { "CHEATS", VP_ROOT, l_cheats, 0 },
     [VP_EXIT]    = { "EXIT GAME?", -1, l_exit, 2 },
     [VP_PAUSE]   = { "PAUSED", -1, l_pause, 5 },
+    [VP_MAP]     = { "MAP", VP_PAUSE, l_map, 1 },
     [VP_QUITPROG] = { "EXIT GAME?", VP_PAUSE, l_quitprog, 2 },
     [VP_QUIT]    = { "EXIT TO MAIN MENU?", VP_PAUSE, l_quit, 2 },
     [VP_RESTART] = { "RESTART AREA?", VP_PAUSE, l_restart, 2 },
@@ -318,6 +342,12 @@ static void line_value(const mline *l, char *v, size_t cap)
     case L_CHEAT: snprintf(v, cap, "%s", cheat_on(l->arg) ? "ON" : "OFF"); break;
     case L_LANG: snprintf(v, cap, "%s", g_lang_name[g_lang_sel]); break;
     case L_DEVICE: snprintf(v, cap, "%s", g_map_keyboard ? "KEYBOARD" : "CONTROLLER"); break;
+    case L_PROFILE:
+        if (gta2_bind_profile())
+            snprintf(v, cap, "%d", gta2_bind_profile());
+        else
+            snprintf(v, cap, "STOCK");
+        break;
     case L_SHON: snprintf(v, cap, "%s", gta2_shader_on() ? "ON" : "OFF"); break;
     case L_SHPRESET: gta2_shader_preset_name(v, cap); snprintf(v + strlen(v), cap - strlen(v), " >"); break;
     case L_SHRES: snprintf(v, cap, "%s", (const char *[]){ "ORIGINAL", "2X", "FULL" }[gta2_shader_resolution()]); break;
@@ -384,8 +414,14 @@ static void build_mapping_page(void)
 {
     int n = 0;
     l_mapping[n++] = (mline){ "DEVICE", L_DEVICE, 0 };
-    for (int i = 0; i < gta2_bind_count(g_map_keyboard); i++)
-        l_mapping[n++] = (mline){ NULL, L_BIND, i };
+    l_mapping[n++] = (mline){ "PROFILE", L_PROFILE, 0 };   /* STOCK, 1..3: a whole mapping each (maintainer 2026-11-27) */
+    l_mapping[n++] = (mline){ "", L_HEAD, 0 };
+    /* the functions in groups with headings and empty lines (maintainer 2026-11-27) */
+    for (int r = 0; r < gta2_bind_rows(g_map_keyboard) && n < (int)(sizeof l_mapping / sizeof l_mapping[0]); r++) {
+        int b;
+        const char *head = gta2_bind_row(g_map_keyboard, r, &b);
+        l_mapping[n++] = head ? (mline){ head, L_HEAD, 0 } : (mline){ NULL, L_BIND, b };
+    }
     g_pages[VP_MAPPING].n = n;
 }
 
@@ -404,7 +440,7 @@ static const char *line_label(const mline *l)
     if (l->kind == L_OPT)
         return opt_label(l->arg);
     if (l->kind == L_BIND)
-        return gta2_bind_label(l->arg);
+        return gta2_bind_label(g_map_keyboard, l->arg);
     if (l->kind == L_SHPARAM)
         return gta2_shader_param_label(l->arg);
     if (l->kind == L_OVR)
@@ -452,6 +488,8 @@ static void build_cheat_page(void)
 
 static void open_vpage(int vp)
 {
+    if (vp == VP_MAPPING)
+        build_mapping_page();   /* its controller lines follow CONTROLLER (MODERN or CUSTOM) */
     g_cur_of[g_vp] = g_cur;
     g_vp = vp;
     g_cur = 0;
@@ -618,6 +656,10 @@ static void change(X86Ctx *ctx, const mline *l, int d)
         g_map_keyboard = !g_map_keyboard;
         build_mapping_page();
         break;
+    case L_PROFILE:
+        gta2_bind_profile_set((gta2_bind_profile() + d + 4) % 4);   /* STOCK, 1, 2, 3 */
+        wr_call_guest(ctx, FN_READ_CONTROLS, 0, NULL);   /* the keyboard's keys changed */
+        break;
     case L_SHON: gta2_shader_set_on(!gta2_shader_on()); break;
     case L_SHRES: gta2_shader_set_resolution(gta2_shader_resolution() + d); break;
     case L_SHPARAM: gta2_shader_param_step(l->arg, d); break;
@@ -662,9 +704,9 @@ static int poll_wait(X86Ctx *ctx)
         int c = 0;
         while (!(fresh >> c & 1))
             c++;
-        gta2_bind_set_pad(g_wait, c);
-        if (opt_get(OPT_CONTROL_SCHEME) != 2)
-            opt_set(OPT_CONTROL_SCHEME, 2);   /* a custom binding: CONTROLLER becomes CUSTOM */
+        /* MODERN keeps MODERN (its own button layout, issue #3); CLASSIC becomes CUSTOM as before */
+        if (gta2_bind_set_pad(g_wait, c) && opt_get(OPT_CONTROL_SCHEME) == 0)
+            opt_set(OPT_CONTROL_SCHEME, 2);
         g_wait = -1;
         g_wait_hold = 1;   /* the menu ignores keys until everything is released */
     }
@@ -717,7 +759,10 @@ static void menu_keys(X86Ctx *ctx, uint32_t f, int left, int right, int up, int 
     } else if (defaults) {
         page_defaults(ctx);
     } else if (up || down) {
-        g_cur = (g_cur + (down ? 1 : pg->n - 1)) % pg->n;
+        int tries = pg->n;
+        do   /* past headings and empty lines */
+            g_cur = (g_cur + (down ? 1 : pg->n - 1)) % pg->n;
+        while (pg->l[g_cur].kind == L_HEAD && --tries > 0);
         wr_wr32(FE_SOUND, down ? SND_DOWN : SND_UP);
     } else if (enter) {
         if (l->kind == L_PAGE) {
@@ -918,14 +963,14 @@ static void draw_overview_row(X86Ctx *ctx, const mline *l, const char *v, int x0
     int w = xr - x0;
     put_text(ctx, line_label(l), x0, y, fo, sc);
     const char *bar = strstr(v, "   |   ");
-    if (!bar)
-        return;
-    char a[64];
-    size_t n = (size_t)(bar - v) < sizeof a - 1 ? (size_t)(bar - v) : sizeof a - 1;
-    memcpy(a, v, n);
-    a[n] = 0;
-    put_text(ctx, a, x0 + w * 30 / 100, y, fo, sc);
-    put_text(ctx, bar + 7, x0 + w * 66 / 100, y, fo, sc);
+    if (bar) {
+        char a[64];
+        size_t n = (size_t)(bar - v) < sizeof a - 1 ? (size_t)(bar - v) : sizeof a - 1;
+        memcpy(a, v, n);
+        a[n] = 0;
+        put_text(ctx, a, x0 + w * 30 / 100, y, fo, sc);
+        put_text(ctx, bar + 7, x0 + w * 66 / 100, y, fo, sc);
+    }
 }
 
 /* CONTROLLER LAYOUT: the drawn pad over the whole screen (sw x sh), the labels at its lines */
@@ -1109,6 +1154,13 @@ void gta2_pause_tick(X86Ctx *ctx)
         g_pause_open = 1;
         g_host = HOST_PAUSE;
         g_pages[VP_SHADERS].n = 5;   /* + TAKE TEST PICTURE */
+        if (opt_get(OPT_MINIMAP) && opt_get(OPT_PAUSE_MAP)) {
+            g_pages[VP_PAUSE].l = l_pause_map;
+            g_pages[VP_PAUSE].n = (int)(sizeof l_pause_map / sizeof l_pause_map[0]);
+        } else {
+            g_pages[VP_PAUSE].l = l_pause;
+            g_pages[VP_PAUSE].n = (int)(sizeof l_pause / sizeof l_pause[0]);
+        }
         g_wr_input_captured = 1;
         g_vp = VP_PAUSE;
         g_cur = g_top = 0;
@@ -1138,6 +1190,23 @@ void gta2_pause_draw(X86Ctx *ctx)
         return;
     }
     gbh_port_rect(0, 0, (float)sw, (float)sh, 0xA0000000u);   /* dim the game */
+    if (g_vp == VP_MAP) {   /* PAUSE MAP: the district as big as the screen's height allows, the title above */
+        /* the map on the left, the legend in the room to its right (maintainer 2026-11-27); 4:3 too */
+        float s = (float)sh * 0.80f, y = (float)sh * 0.15f;
+        float lw = (float)sw * 0.26f;                       /* the legend's column */
+        float x = ((float)sw - s - lw) / 2;
+        if (!gta2_radar_draw_full(x, y, s)) {
+            put_text(ctx, "NO MAP", (int)x, (int)y, P_FONT, P_FONT_SCALE);
+        } else {
+            float lx = x + s + (float)sw * 0.03f, ly = y + 10, d = (float)sh * 0.032f, step = (float)sh * 0.05f;
+            const char *t;
+            for (int n = 0; (t = gta2_radar_legend(n, lx + d / 2, ly + (float)n * step, d)) != NULL; n++)
+                put_text(ctx, t, (int)(lx + d * 1.6f), (int)(ly + (float)n * step - d * 0.6f), P_FONT,
+                         P_FONT_SCALE * 5 / 8);
+        }
+        put_text(ctx, "MAP", (int)x, (int)((float)sh * 0.02f), P_HI, P_HI_SCALE * 2);   /* over it, above it */
+        return;
+    }
     const mpage *pg = &g_pages[g_vp];
     int wide = g_vp == VP_SHADERS || g_vp == VP_SHBROWSE || g_vp == VP_SHPARAMS ||
                g_vp == VP_OVERVIEW;   /* long preset names, three columns */

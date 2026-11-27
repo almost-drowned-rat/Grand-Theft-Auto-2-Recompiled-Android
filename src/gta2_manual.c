@@ -12,6 +12,8 @@
 #include "gta2_framerate.h"
 #include "gta2_mixtape.h"
 #include "gta2_text.h"
+#include "gta2_radar.h"
+#include "gta2_input.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -478,6 +480,9 @@ void sub_004A5C50(RECOMP_PARAMS)   /* on-foot control step (thiscall player, ped
 extern void sub_004CA440_gen(RECOMP_PARAMS);
 void sub_004CA440(RECOMP_PARAMS)   /* draws the HUD each frame (thiscall HUD) */
 {
+    gta2_camera_keys();             /* CAMERA KEYS: Page Up / Down, MODERN d-pad up / down */
+    gta2_camera_distance_apply();   /* CAMERA DISTANCE: writes only when the setting changed */
+    gta2_radar_draw(ctx);   /* MINIMAP: over the world, under all of the game's HUD (texts, bars, panels) */
     sub_004CA440_gen(ctx, base);
     uint32_t eax = ctx->r_eax;
     gta2_radio_label_draw(ctx);   /* MIXTAPE: station + song for a moment */
@@ -486,6 +491,21 @@ void sub_004CA440(RECOMP_PARAMS)   /* draws the HUD each frame (thiscall HUD) */
 }
 
 extern void sub_004C9FA0_gen(RECOMP_PARAMS);
+/* The HUD's navigation arrows (thiscall arrow manager, plain ret; only drawing, docs/re/minimap.md 2.3):
+ * NAVIGATION ARROWS decides which of the game's arrows show. */
+extern void sub_004C84C0_gen(RECOMP_PARAMS);
+void sub_004C84C0(RECOMP_PARAMS)
+{
+    uint32_t mgr = ctx->r_ecx;
+    uint32_t hidden = gta2_radar_arrows_hide(mgr);   /* bit i: arrow i hidden for this draw */
+    if (hidden == 0xFFFFFFFFu) {
+        ctx->r_esp += 4;   /* ret: no arrows */
+        return;
+    }
+    sub_004C84C0_gen(ctx, base);
+    gta2_radar_arrows_restore(mgr, hidden);
+}
+
 void sub_004C9FA0(RECOMP_PARAMS)   /* the game's PAUSED panel (thiscall, plain ret) */
 {
     if (gta2_pause_hide_panel()) {
