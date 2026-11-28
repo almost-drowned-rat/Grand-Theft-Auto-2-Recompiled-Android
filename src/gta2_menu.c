@@ -24,6 +24,7 @@
 #include "gta2_menu.h"
 #include "gta2_options.h"
 #include "gta2_state.h"
+#include "gta2_saveany.h"
 #include "render/gta2_render.h"
 #include "gta2_input.h"
 #include "gta2_padview.h"
@@ -69,9 +70,10 @@ enum { SND_UP = 1, SND_DOWN = 2, SND_VALUE = 3, SND_SELECT = 5, SND_BACK = 6 };
 
 enum { VP_ROOT, VP_SOUND, VP_DISPLAY, VP_PERF, VP_LANG, VP_CONTROLS, VP_CHEATS, VP_EXIT, VP_PAUSE, VP_QUIT, VP_RESTART,
        VP_QUITPROG, VP_MAPPING, VP_GAMEPLAY, VP_SHADERS, VP_SHBROWSE, VP_SHPARAMS, VP_OVERVIEW, VP_PADVIEW, VP_SOUNDTRACK,
-       VP_MINIMAP, VP_MAP, VP_COUNT };
-enum { L_PAGE, L_OPT, L_VOL, L_CHEAT, L_LANG, L_ACTION, L_BACK, L_DEVICE, L_BIND, L_SHON, L_SHPRESET, L_SHITEM, L_SHRES, L_SHPARAMS, L_SHPARAM, L_OVR, L_PADVIEW, L_MTSRC, L_MTMODE, L_PROFILE,
-       L_HEAD /* a heading or an empty line: not chosen, the cursor passes over it */ };
+       VP_MINIMAP, VP_MAP, VP_ANALOGUE, VP_SPRINTBAR, VP_DAYNIGHT, VP_COUNT };
+enum { L_PAGE, L_OPT, L_VOL, L_CHEAT, L_LANG, L_ACTION, L_BACK, L_DEVICE, L_BIND, L_SHON, L_SHPRESET, L_SHITEM, L_SHRES, L_SHPARAMS, L_SHPARAM, L_OVR, L_PADVIEW, L_MTSRC, L_MTMODE, L_PROFILE, L_SUBPAGE /* a page entered from a line of its own: drawn at the right edge with a ">" */,
+       L_HEAD /* a heading or an empty line: not chosen, the cursor passes over it */,
+       L_SAVE /* SAVE GAME (issue #6): its value is why not, if a save is refused now */ };
 enum { ACT_UNLOCK_AREAS = 1, ACT_RESTART_NOW, ACT_RESTART_LATER, ACT_EXIT_NO, ACT_EXIT_YES, ACT_RESUME, ACT_QUIT_YES,
        ACT_RESTART_YES, ACT_NO, ACT_QUITPROG_YES, ACT_TEST_PICTURE };
 enum { VOL_MUSIC, VOL_SFX };
@@ -131,12 +133,27 @@ static const mline l_perf[] = {
     { NULL, L_OPT, OPT_VSYNC }, { NULL, L_OPT, OPT_PERF_FPS }, { NULL, L_OPT, OPT_PERF_FRAMETIME },
     { NULL, L_OPT, OPT_PERF_SPEED },
 };
-static mline l_cheats[N_CHEATS + 1];
-static const mline l_controls[] = { { NULL, L_OPT, OPT_CONTROL_SCHEME }, { NULL, L_OPT, OPT_KEY_SCHEME },
-                                    { NULL, L_OPT, OPT_RUMBLE },
-                                    { "CUSTOM MAPPING", L_PAGE, VP_MAPPING },
-                                    { "CONTROLLER LAYOUT", L_PAGE, VP_PADVIEW },
-                                    { "CONTROL OVERVIEW", L_PAGE, VP_OVERVIEW } };
+static mline l_cheats[N_CHEATS + 2];
+static mline l_controls[8];   /* built by controls_sync */
+/* ENHANCEMENTS > ANALOGUE STEERING (PR #7's car steering, maintainer 2026-11-28: a switch with his choices) */
+static const mline l_analogue[] = {
+    { NULL, L_OPT, OPT_ANALOGUE_STEERING },
+    { NULL, L_OPT, OPT_STEER_PRESET }, { NULL, L_OPT, OPT_STEER_DEAD }, { NULL, L_OPT, OPT_STEER_CURVE },
+    { NULL, L_OPT, OPT_STEER_HOLD },
+};
+/* ENHANCEMENTS > SPRINT (maintainer 2026-11-28: a page of its own as the minimap - SPRINT on / off, the PRESET, then the
+ * bar: on / off and its position) */
+static const mline l_sprintbar[] = {
+    { NULL, L_OPT, OPT_SPRINT }, { NULL, L_OPT, OPT_SPRINT_PRESET },
+    { NULL, L_OPT, OPT_SPRINT_BAR }, { NULL, L_OPT, OPT_SPRINT_BAR_X }, { NULL, L_OPT, OPT_SPRINT_BAR_Y },
+};
+/* ENHANCEMENTS > DAY / NIGHT (maintainer 2026-11-28): the cycle on / off, PRESET 1 / 2 / 3 / CUSTOM, then each phase's
+ * length in real time to the second (0:00 skips it: only DAY > 0 = always day) */
+static const mline l_daynight[] = {
+    { NULL, L_OPT, OPT_DAY_NIGHT }, { NULL, L_OPT, OPT_DAY_PRESET },
+    { NULL, L_OPT, OPT_DAY_SECS }, { NULL, L_OPT, OPT_SUNSET_SECS }, { NULL, L_OPT, OPT_NIGHT_SECS },
+    { NULL, L_OPT, OPT_SUNRISE_SECS },
+};
 static const mline l_padview[] = { { "VIEW", L_PADVIEW, 0 } };
 static int g_pv_car;   /* CONTROLLER LAYOUT shows IN A CAR */
 static mline l_overview[32];
@@ -159,10 +176,19 @@ static const gta2_shader_item *g_browse_items;
 /* Its order (maintainer 2026-11-27): LANGUAGE, MINIMAP, MANUAL CAMERA, then the rest; no CAMERA DISTANCE line
  * (the camera buttons set it). LANGUAGE has no sub-page; leaving the page with a language other than the one
  * the game started with opens the pop-up RESTART? (RESTART NOW / RESTART LATER) - every time */
+/* 2026-11-28 (maintainer): the lines with a page of their own first (after SPRINT), the other choices, then the ON / OFF
+ * switches - "first the complicated options, then the on / off switches" */
 static const mline l_gameplay[] = { { "LANGUAGE", L_LANG, 0 }, { "MINIMAP", L_PAGE, VP_MINIMAP },
-                                    { NULL, L_OPT, OPT_MANUAL_CAMERA },
+                                    { "SPRINT", L_PAGE, VP_SPRINTBAR },
+                                    { "DAY / NIGHT", L_PAGE, VP_DAYNIGHT },
+                                    { "ANALOGUE STEERING", L_PAGE, VP_ANALOGUE },   /* PR #7 */
                                     { NULL, L_OPT, OPT_PEDESTRIANS }, { NULL, L_OPT, OPT_TRAFFIC },
-                                    { NULL, L_OPT, OPT_SPRINT }, { NULL, L_OPT, OPT_MORE_BLOOD } };
+                                    { NULL, L_OPT, OPT_MANUAL_CAMERA },   /* + the fixed camera (issue #6) */
+                                    { NULL, L_OPT, OPT_SAVE_ANYWHERE },   /* SAVE GAME / LOAD GAME (issue #6) */
+                                    { NULL, L_OPT, OPT_PUNCH },           /* PR #7: X on foot, CUSTOM MAPPING */
+                                    { NULL, L_OPT, OPT_TURRET_AIM },      /* PR #7 */
+                                    { NULL, L_OPT, OPT_CAMERA_PAN },      /* PR #7: SPECIAL 2 + right stick */
+                                    { NULL, L_OPT, OPT_MORE_BLOOD } };
 /* GAMEPLAY > MINIMAP (maintainer 2026-11-27): the radar's look, then an ON/OFF switch per element */
 static const mline l_minimap[] = {
     { NULL, L_OPT, OPT_MINIMAP }, { NULL, L_OPT, OPT_MINIMAP_SIZE }, { NULL, L_OPT, OPT_MINIMAP_ZOOM },
@@ -184,15 +210,17 @@ static int g_wait_hold;   /* after a pad binding: ignore keys until released */
  * 2026-11-26; the game quit at once, through the credits) */
 static const mline l_exit[] = { { "NO", L_ACTION, ACT_EXIT_NO }, { "YES", L_ACTION, ACT_EXIT_YES } };
 /* the pause menu over the game (START / Esc in play; maintainer 2026-11-26) */
+/* + SAVE GAME under RESUME (save anywhere, issue #6; maintainer 2026-11-28: in the pause menu during play) */
 static const mline l_pause[] = {
-    { "RESUME", L_ACTION, ACT_RESUME }, { "RECOMP OPTIONS", L_PAGE, VP_ROOT },
-    { "RESTART AREA", L_PAGE, VP_RESTART }, { "EXIT GAME", L_PAGE, VP_QUITPROG },
+    { "RESUME", L_ACTION, ACT_RESUME }, { "SAVE GAME", L_SAVE, 0 }, { "RESTART AREA", L_PAGE, VP_RESTART },
+    { "RECOMP OPTIONS", L_PAGE, VP_ROOT }, { "EXIT GAME", L_PAGE, VP_QUITPROG },   /* swapped (maintainer 2026-11-28) */
     { "EXIT TO MAIN MENU", L_PAGE, VP_QUIT },
 };
 /* ... with MINIMAP > PAUSE MAP on: MAP under RESUME, the whole district (maintainer 2026-11-27) */
 static const mline l_pause_map[] = {
-    { "RESUME", L_ACTION, ACT_RESUME }, { "MAP", L_PAGE, VP_MAP }, { "RECOMP OPTIONS", L_PAGE, VP_ROOT },
-    { "RESTART AREA", L_PAGE, VP_RESTART }, { "EXIT GAME", L_PAGE, VP_QUITPROG },
+    { "RESUME", L_ACTION, ACT_RESUME }, { "SAVE GAME", L_SAVE, 0 }, { "MAP", L_PAGE, VP_MAP },
+    { "RESTART AREA", L_PAGE, VP_RESTART },
+    { "RECOMP OPTIONS", L_PAGE, VP_ROOT }, { "EXIT GAME", L_PAGE, VP_QUITPROG },
     { "EXIT TO MAIN MENU", L_PAGE, VP_QUIT },
 };
 static const mline l_map[] = { { "BACK", L_BACK, 0 } };
@@ -207,6 +235,9 @@ static mpage g_pages[VP_COUNT] = {
     [VP_DISPLAY] = { "RENDERING", VP_ROOT, l_display, (int)(sizeof l_display / sizeof l_display[0]) },
     [VP_PERF]    = { "PERFORMANCE", VP_ROOT, l_perf, 4 },
     [VP_CONTROLS] = { "CONTROLS", VP_ROOT, l_controls, 6 },
+    [VP_ANALOGUE] = { "ANALOGUE STEERING", VP_GAMEPLAY, l_analogue, (int)(sizeof l_analogue / sizeof l_analogue[0]) },
+    [VP_SPRINTBAR] = { "SPRINT", VP_GAMEPLAY, l_sprintbar, (int)(sizeof l_sprintbar / sizeof l_sprintbar[0]) },
+    [VP_DAYNIGHT] = { "DAY / NIGHT", VP_GAMEPLAY, l_daynight, (int)(sizeof l_daynight / sizeof l_daynight[0]) },
     [VP_PADVIEW] = { "CONTROLLER LAYOUT", VP_CONTROLS, l_padview, 1 },
     [VP_OVERVIEW] = { "CONTROL OVERVIEW", VP_CONTROLS, l_overview, 0 },
     [VP_MAPPING] = { "CUSTOM MAPPING", VP_CONTROLS, l_mapping, 0 },
@@ -218,7 +249,7 @@ static mpage g_pages[VP_COUNT] = {
     [VP_SHBROWSE] = { g_browse_title, VP_SHADERS, l_browse, 0 },
     [VP_CHEATS]  = { "CHEATS", VP_ROOT, l_cheats, 0 },
     [VP_EXIT]    = { "EXIT GAME?", -1, l_exit, 2 },
-    [VP_PAUSE]   = { "PAUSED", -1, l_pause, 5 },
+    [VP_PAUSE]   = { "PAUSED", -1, l_pause, (int)(sizeof l_pause / sizeof l_pause[0]) },
     [VP_MAP]     = { "MAP", VP_PAUSE, l_map, 1 },
     [VP_QUITPROG] = { "EXIT GAME?", VP_PAUSE, l_quitprog, 2 },
     [VP_QUIT]    = { "EXIT TO MAIN MENU?", VP_PAUSE, l_quit, 2 },
@@ -366,6 +397,11 @@ static void line_value(const mline *l, char *v, size_t cap)
     case L_MTMODE:
         snprintf(v, cap, "%s", strcmp(wr_settings_get("mixtape_mode", "order"), "shuffle") ? "IN ORDER" : "SHUFFLE");
         break;
+    case L_SAVE: {   /* why a save is refused now (empty = allowed) */
+        const char *why = gta2_saveany_refusal();
+        snprintf(v, cap, "%s", why ? why : "");
+        break;
+    }
     case L_OVR:
         if (gta2_overview_is_head(l->arg))
             snprintf(v, cap, "CONTROLLER %s   |   %s%s", opt_choice_label(OPT_CONTROL_SCHEME, opt_get(OPT_CONTROL_SCHEME)),
@@ -473,13 +509,30 @@ static void prepare_page(uint32_t f)
 
 static void build_mapping_page(void);
 
+static void controls_sync(void)
+{
+    int n = 0;
+    l_controls[n++] = (mline){ NULL, L_OPT, OPT_CONTROL_SCHEME };   /* (ANALOGUE STEERING: ENHANCEMENTS, 2026-11-28) */
+    l_controls[n++] = (mline){ NULL, L_OPT, OPT_KEY_SCHEME };
+    l_controls[n++] = (mline){ NULL, L_OPT, OPT_RUMBLE };
+    l_controls[n++] = (mline){ "CUSTOM MAPPING", L_PAGE, VP_MAPPING };
+    l_controls[n++] = (mline){ "CONTROLLER LAYOUT", L_PAGE, VP_PADVIEW };
+    l_controls[n++] = (mline){ "CONTROL OVERVIEW", L_PAGE, VP_OVERVIEW };
+    g_pages[VP_CONTROLS].n = n;
+}
+
 static void build_cheat_page(void)
 {
+    controls_sync();
     if (g_pages[VP_CHEATS].n)
         return;
     int n = 0;
     for (int i = 0; i < N_CHEATS; i++)
+    {
         l_cheats[n++] = (mline){ g_cheats[i].label, L_CHEAT, i };
+        if (!strcmp(g_cheats[i].key, "cheat_flamethrower"))   /* port-only, with the other ENDLESS lines */
+            l_cheats[n++] = (mline){ NULL, L_OPT, OPT_ENDLESS_SPRINT };
+    }
     l_cheats[n++] = (mline){ "UNLOCK ALL AREAS", L_ACTION, ACT_UNLOCK_AREAS };
     g_pages[VP_CHEATS].n = n;
     build_mapping_page();
@@ -488,11 +541,14 @@ static void build_cheat_page(void)
 
 static void open_vpage(int vp)
 {
+    controls_sync();
     if (vp == VP_MAPPING)
         build_mapping_page();   /* its controller lines follow CONTROLLER (MODERN or CUSTOM) */
     g_cur_of[g_vp] = g_cur;
     g_vp = vp;
     g_cur = 0;
+    while (g_cur < g_pages[vp].n - 1 && g_pages[vp].l[g_cur].kind == L_HEAD)   /* not on a heading */
+        g_cur++;
     g_top = 0;
 }
 
@@ -518,6 +574,26 @@ void gta2_menu_frontend_built(uint32_t f)
     }
     if (wr_rd16(f + 0x2AA) == 0x102 || wr_rd16(f + 0x2AA) == 9)   /* item 2: QUIT (credits, then quit) */
         set_item_text(f + 0x230, "EXIT GAME");
+    /* LOAD GAME under PLAY (save anywhere, issue #6; maintainer 2026-11-28: a new line in the start menu), only
+     * when this profile has a save-anywhere save: items 1, 2 move down, the new item 1 is PLAY's copy with its own
+     * text and the do-nothing action 0x10C (Enter on it is taken in gta2_menu_input). Page 0: u16 count at fe+0x122,
+     * item i at fe+0x126 + i*0x82 (+4 y, +6 text, +0x80 action), cursor markers at fe+0xCAC + 6*i (x, y, visible). */
+    if (wr_rd16(f + 0x122) == 3 && !wr_rd32(0x00673E2Cu) && opt_get(OPT_SAVE_ANYWHERE) && gta2_saveany_exists()) {
+        uint32_t it = f + 0x126, mk = f + 0xCAC;
+        memmove(wr_ptr(it + 3 * 0x82), wr_ptr(it + 2 * 0x82), 0x82);
+        memmove(wr_ptr(it + 2 * 0x82), wr_ptr(it + 1 * 0x82), 0x82);
+        memcpy(wr_ptr(it + 1 * 0x82), wr_ptr(it), 0x82);
+        set_item_text(it + 0x82 + 6, "LOAD GAME");
+        wr_wr16(it + 0x82 + 0x80, 0x10C);
+        for (uint32_t i = 0; i < 4; i++) {
+            uint16_t y = (uint16_t)(250 + 20 * i);
+            wr_wr16(it + i * 0x82 + 4, y);
+            wr_wr16(mk + 6 * i, 280);
+            wr_wr16(mk + 6 * i + 2, (uint16_t)(y + 8));
+            wr_wr8(mk + 6 * i + 4, 1);
+        }
+        wr_wr16(f + 0x122, 4);
+    }
     prepare_page(f);
 }
 
@@ -537,7 +613,7 @@ static void page_defaults(X86Ctx *ctx)
     for (int i = 0; i < pg->n; i++) {
         const mline *l = &pg->l[i];
         switch (l->kind) {
-        case L_OPT: opt_set(l->arg, opt_default(l->arg)); break;
+        case L_OPT: opt_set(l->arg, opt_default(l->arg)); if (l->arg == OPT_CONTROL_SCHEME) controls_sync(); break;
         case L_VOL: vol_set(ctx, l->arg, 127); break;
         case L_CHEAT: if (cheat_on(l->arg) != g_cheats[l->arg].def) cheat_set(l->arg, g_cheats[l->arg].def); break;
         case L_LANG: break;   /* the language stays: Y on GAMEPLAY resets the gameplay settings only */
@@ -550,6 +626,11 @@ static void page_defaults(X86Ctx *ctx)
         if (g_map_keyboard)
             wr_call_guest(ctx, FN_READ_CONTROLS, 0, NULL);
     }
+    /* a page that shrank (CONTROLS loses ANALOGUE SETTINGS): the cursor stays on it (review 2026-11-28) */
+    if (g_cur >= g_pages[g_vp].n)
+        g_cur = g_pages[g_vp].n > 0 ? g_pages[g_vp].n - 1 : 0;
+    if (g_top > g_cur)
+        g_top = g_cur;
     wr_wr32(FE_SOUND, SND_VALUE);
 }
 
@@ -620,12 +701,48 @@ static void go_back(X86Ctx *ctx, uint32_t f)
     g_top = g_cur >= VISIBLE ? g_cur - VISIBLE + 1 : 0;
 }
 
+/* SPRINT BAR > POSITION X / Y (maintainer 2026-11-28): after a change a full sample bar shows at the new place for 2 s
+ * (the last 0.5 s fading), over the menu, wherever the menu is drawn */
+static uint32_t g_bar_preview_ms;
+
+static void sprint_bar_preview(void)
+{
+    if (!g_bar_preview_ms)
+        return;
+    uint32_t t = wr_time_ms() - g_bar_preview_ms;
+    if (t >= 2000 || g_vp != VP_SPRINTBAR) {
+        g_bar_preview_ms = 0;
+        return;
+    }
+    gta2_sprint_bar_preview(t < 1500 ? 1.0f : (float)(2000 - t) / 500.0f);
+}
+
 static void change(X86Ctx *ctx, const mline *l, int d)
 {
     switch (l->kind) {
     case L_OPT: {
         int n = opt_count(l->arg);
+        if (opt_is_numeric(l->arg)) {
+            /* seconds: held left / right count faster - 1 s, after 2 s 5 s, after 4 s 15 s, after 6 s 60 s steps;
+             * no wrap-around (0:00 .. the top) */
+            static uint32_t last, start;
+            uint32_t now = wr_time_ms();
+            if (now - last > 200)
+                start = now;
+            last = now;
+            uint32_t held = now - start;
+            int step = held > 6000 ? 60 : held > 4000 ? 15 : held > 2000 ? 5 : 1;
+            int v = opt_get(l->arg) + d * step;
+            if (step > 1)
+                v = v / step * step + (d < 0 && v % step ? step : 0);   /* on round numbers */
+            opt_set(l->arg, v < 0 ? 0 : v >= n ? n - 1 : v);
+            break;
+        }
         opt_set(l->arg, (opt_get(l->arg) + d + n) % n);
+        if (l->arg == OPT_CONTROL_SCHEME)
+            controls_sync();
+        if (l->arg == OPT_SPRINT_BAR_X || l->arg == OPT_SPRINT_BAR_Y)
+            g_bar_preview_ms = wr_time_ms();   /* the sample bar at the new place (sprint_bar_preview) */
         break;
     }
     case L_VOL: {
@@ -705,8 +822,8 @@ static int poll_wait(X86Ctx *ctx)
         while (!(fresh >> c & 1))
             c++;
         /* MODERN keeps MODERN (its own button layout, issue #3); CLASSIC becomes CUSTOM as before */
-        if (gta2_bind_set_pad(g_wait, c) && opt_get(OPT_CONTROL_SCHEME) == 0)
-            opt_set(OPT_CONTROL_SCHEME, 2);
+        if (gta2_bind_set_pad(g_wait, c) && opt_get(OPT_CONTROL_SCHEME) == SCHEME_CLASSIC)
+            opt_set(OPT_CONTROL_SCHEME, SCHEME_CUSTOM), controls_sync();
         g_wait = -1;
         g_wait_hold = 1;   /* the menu ignores keys until everything is released */
     }
@@ -765,7 +882,7 @@ static void menu_keys(X86Ctx *ctx, uint32_t f, int left, int right, int up, int 
         while (pg->l[g_cur].kind == L_HEAD && --tries > 0);
         wr_wr32(FE_SOUND, down ? SND_DOWN : SND_UP);
     } else if (enter) {
-        if (l->kind == L_PAGE) {
+        if (l->kind == L_PAGE || l->kind == L_SUBPAGE) {
             open_vpage(l->arg);
             wr_wr32(FE_SOUND, SND_SELECT);
         } else if (l->kind == L_BACK) {
@@ -806,6 +923,11 @@ static void menu_keys(X86Ctx *ctx, uint32_t f, int left, int right, int up, int 
             wr_wr32(FE_SOUND, SND_SELECT);
         } else if (l->kind == L_ACTION && l->arg == ACT_RESUME) {
             pause_close(ctx, 1);
+        } else if (l->kind == L_SAVE) {   /* SAVE GAME: saved -> back into the game, the HUD says "saved" */
+            if (gta2_saveany_save(ctx))
+                pause_close(ctx, 1);
+            else
+                wr_wr32(FE_SOUND, SND_BACK);   /* refused: the reason is on the line */
         } else if (l->kind == L_ACTION && l->arg == ACT_NO) {
             go_back(ctx, f);
         } else if (l->kind == L_ACTION && (l->arg == ACT_QUIT_YES || l->arg == ACT_RESTART_YES)) {
@@ -865,9 +987,18 @@ int gta2_menu_input(X86Ctx *ctx)
         if (e && n++ < 5000)
             wr_log("menu: page %u edges %08X %08X", page, wr_rd32(f + FE_EDGE), wr_rd32(f + FE_EDGE + 4));
     }
-    if (page == 0 && wr_rd16(f + 0x122) == 3) {   /* main menu: Esc, or Enter on EXIT GAME */
+    uint16_t n0 = page == 0 ? wr_rd16(f + 0x122) : 0;
+    if (n0 == 4 && wr_rd8(f + FE_EDGE + 4) && wr_rd16(f + FE_PAGES + 0xBC6) == 1) {   /* Enter on LOAD GAME */
+        wr_wr8(f + FE_EDGE + 4, 0);
+        if (gta2_saveany_load(ctx, f))
+            wr_wr32(FE_SOUND, SND_SELECT);
+        else
+            wr_wr32(FE_SOUND, SND_BACK);
+        return 1;
+    }
+    if (n0 == 3 || n0 == 4) {   /* main menu: Esc, or Enter on EXIT GAME (the last line; 4 with LOAD GAME) */
         int esc0 = wr_rd8(f + FE_EDGE + 5);
-        int exit0 = wr_rd8(f + FE_EDGE + 4) && wr_rd16(f + FE_PAGES + 0xBC6) == 2;
+        int exit0 = wr_rd8(f + FE_EDGE + 4) && wr_rd16(f + FE_PAGES + 0xBC6) == n0 - 1;
         if (esc0 || exit0) {
             wr_wr8(f + FE_EDGE + 4, 0);
             wr_wr8(f + FE_EDGE + 5, 0);
@@ -1042,6 +1173,10 @@ void gta2_menu_draw(X86Ctx *ctx)
             draw_overview_row(ctx, l, v, xl, xr, y, fo, 0x2800u);
             continue;
         }
+        if (l->kind == L_SUBPAGE) {   /* a page of its own: the same place and type as any line */
+            put_text(ctx, l->label, xl, y, fo, SCALE);
+            continue;
+        }
         put_text(ctx, line_label(l), xl, y, fo, SCALE);
         if (v[0])
             put_text(ctx, v, xr - text_w(ctx, v, fo, SCALE), y, fo, SCALE);
@@ -1057,6 +1192,7 @@ void gta2_menu_draw(X86Ctx *ctx)
         put_text(ctx, "THE NEW LANGUAGE", xl, Y_FIRST + 3 * Y_STEP, font, SCALE);
         put_text(ctx, "NEEDS A RESTART", xl, Y_FIRST + 4 * Y_STEP, font, SCALE);
     }
+    sprint_bar_preview();
 }
 
 /* After the game read its Debug flags at start: the saved cheats. */
@@ -1154,12 +1290,18 @@ void gta2_pause_tick(X86Ctx *ctx)
         g_pause_open = 1;
         g_host = HOST_PAUSE;
         g_pages[VP_SHADERS].n = 5;   /* + TAKE TEST PICTURE */
-        if (opt_get(OPT_MINIMAP) && opt_get(OPT_PAUSE_MAP)) {
-            g_pages[VP_PAUSE].l = l_pause_map;
-            g_pages[VP_PAUSE].n = (int)(sizeof l_pause_map / sizeof l_pause_map[0]);
-        } else {
-            g_pages[VP_PAUSE].l = l_pause;
-            g_pages[VP_PAUSE].n = (int)(sizeof l_pause / sizeof l_pause[0]);
+        {   /* the lines by the switches: SAVE GAME with ENHANCEMENTS > SAVE ANYWHERE, MAP with MINIMAP > PAUSE MAP */
+            static mline l_pause_now[8];
+            int n = 0;
+            l_pause_now[n++] = l_pause[0];   /* RESUME */
+            if (opt_get(OPT_SAVE_ANYWHERE))
+                l_pause_now[n++] = l_pause[1];   /* SAVE GAME */
+            if (opt_get(OPT_MINIMAP) && opt_get(OPT_PAUSE_MAP))
+                l_pause_now[n++] = l_pause_map[2];   /* MAP */
+            for (int i = 2; i < (int)(sizeof l_pause / sizeof l_pause[0]); i++)
+                l_pause_now[n++] = l_pause[i];   /* RESTART AREA ... EXIT TO MAIN MENU */
+            g_pages[VP_PAUSE].l = l_pause_now;
+            g_pages[VP_PAUSE].n = n;
         }
         g_wr_input_captured = 1;
         g_vp = VP_PAUSE;
@@ -1213,7 +1355,13 @@ void gta2_pause_draw(X86Ctx *ctx)
     int pw = wide ? (g_vp == VP_OVERVIEW ? 600 : 580) : 420, x0 = (sw - pw) / 2, xr = x0 + pw;
     int y0 = sh / 2 - 110;
     gbh_port_rect((float)(x0 - 20), (float)(y0 - 48), (float)(pw + 40), 300.0f, 0xC0201410u);
-    put_text(ctx, pg->title, x0, y0 - 38, P_HI, 0x4000);
+    {   /* the title at its size, smaller when it would run out of the panel ("EXIT TO MAIN MENU?", maintainer 11-28) */
+        uint32_t tsc = 0x4000;
+        int tw = text_w(ctx, pg->title, P_HI, tsc);
+        if (tw > pw + 20 && tw > 0)
+            tsc = (uint32_t)((uint64_t)tsc * (uint32_t)(pw + 20) / (uint32_t)tw);
+        put_text(ctx, pg->title, x0, y0 - 38, P_HI, tsc);
+    }
     char v[128];
     for (int i = g_top; i < pg->n && i < g_top + VISIBLE; i++) {
         const mline *l = &pg->l[i];
@@ -1240,6 +1388,7 @@ void gta2_pause_draw(X86Ctx *ctx)
         put_text(ctx, "THE NEW LANGUAGE", x0, y0 + 3 * 24, P_FONT, 0x4000);
         put_text(ctx, "NEEDS A RESTART", x0, y0 + 4 * 24, P_FONT, 0x4000);
     }
+    sprint_bar_preview();
 }
 
 

@@ -12,6 +12,10 @@
 #       -Unshield <unshield.exe, static> -UnshieldLicence <its LICENSE> -ZlibLicence <zlib's LICENSE>
 #       -LlvmZip <llvm-mingw-...-ucrt-x86_64-slim.zip (the toolkit's prune_llvm_mingw.py)>
 #       -PyZip <python-3.12.x-embed-amd64.zip> -SitePackages <a Python 3.12 site-packages with capstone 5 + pefile>
+#       -Librashader <librashader.dll 0.12.1, built from source, Vulkan only: no D3DX9_43.dll / libc++ imports>
+#       -LibrashaderLicence <its LICENSE.md (MPL-2.0)>
+# librashader ships with every release (maintainer 2026-11-27, as Linux / Android): RECOMP OPTIONS > SHADERS works
+# right after the install; the build copies it beside data\gta2_recomp.exe (build.txt copy line).
 #
 # Builds with the llvm-mingw clang on PATH (the same toolchain the payload ships), CMake and Ninja. All paths absolute,
 # without spaces. Out: <out>\release\{GTA2-windows-x86_64.zip, SHA256SUMS-windows.txt}.
@@ -26,6 +30,8 @@ param(
     [Parameter(Mandatory)][string]$LlvmZip,
     [Parameter(Mandatory)][string]$PyZip,
     [Parameter(Mandatory)][string]$SitePackages,
+    [Parameter(Mandatory)][string]$Librashader,
+    [Parameter(Mandatory)][string]$LibrashaderLicence,
     [int]$Jobs = 4
 )
 $ErrorActionPreference = 'Stop'
@@ -40,7 +46,14 @@ function Run([string]$what, [string]$log, [scriptblock]$cmd) {
     & $cmd *> $log
     if ($LASTEXITCODE) { Get-Content $log -Tail 30; throw "$what failed (exit $LASTEXITCODE) - see $log" }
 }
-foreach ($p in @($SdlDev, $SdlSrc, $Unshield, $UnshieldLicence, $ZlibLicence, $LlvmZip, $PyZip, $SitePackages)) { Need $p }
+foreach ($p in @($SdlDev, $SdlSrc, $Unshield, $UnshieldLicence, $ZlibLicence, $LlvmZip, $PyZip, $SitePackages,
+                 $Librashader, $LibrashaderLicence)) { Need $p }
+# librashader: only Windows' own DLLs and the UCRT may be imported (the official build needs D3DX9_43.dll, a
+# llvm-mingw build without static flags libc++.dll / libunwind.dll - neither is on a player's PC)
+# (case-sensitive: "DLL Name:" = an import; the export table's "DLL name:" is the library's own name)
+$bad = (& llvm-objdump -p $Librashader | Select-String -CaseSensitive 'DLL Name: (.+)$' | ForEach-Object { $_.Matches[0].Groups[1].Value }) |
+    Where-Object { $_ -notmatch '^(KERNEL32|ntdll|ole32|SHELL32|bcryptprimitives|USER32|ADVAPI32|api-ms-win-.*)\.dll$' }
+if ($bad) { throw "librashader imports DLLs a player may not have: $($bad -join ', ')" }
 foreach ($p in @($Out, $SdlDev, $SdlSrc, $LlvmZip)) { if ($p -match ' ') { throw "path with a space: $p" } }
 $Port = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $Toolkit = (Resolve-Path (Join-Path $Port '..\winrecomp')).Path
@@ -85,6 +98,7 @@ Copy-Item (Join-Path $bp 'libgta2_port.a'), (Join-Path $bp 'winrecomp_rt\libwinr
           (Join-Path $bp 'winrecomp_rt\shaderpack\libxbox_shaderpack.a') (Join-Path $S 'lib')
 Copy-Item (Join-Path $SdlDev 'lib\libSDL3.dll.a') (Join-Path $S 'lib')
 Copy-Item (Join-Path $SdlDev 'bin\SDL3.dll') (Join-Path $S 'lib')
+Copy-Item $Librashader (Join-Path $S 'lib\librashader.dll')
 # the game's resources: icon, manifest, VERSIONINFO -> lib\gta2_res.o
 $rcIn = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'gta2.rc.in'))
 $rc = $rcIn.Replace('@ICO@', (Fwd (Join-Path $Port 'assets\icon.ico'))).Replace('@MANIFEST@', (Fwd (Join-Path $PSScriptRoot 'gta2_recomp.manifest'))).Replace('@VER_COMMAS@', $Version.Replace('.', ',')).Replace('@VERSION@', $Version)
@@ -139,6 +153,7 @@ Copy-Item (Join-Path $Port 'launcher\LICENSE') (Join-Path $S 'LICENSES\launcher-
 Copy-Item (Join-Path $Port 'launcher\third_party\miniz\LICENSE') (Join-Path $S 'LICENSES\miniz-MIT.txt')
 Copy-Item (Join-Path $Port 'LICENSE') (Join-Path $S 'LICENSES\gta2-recompiled-MIT.txt')
 Copy-Item (Join-Path $SdlSrc 'LICENSE.txt') (Join-Path $S 'LICENSES\SDL3-LICENSE.txt')
+Copy-Item $LibrashaderLicence (Join-Path $S 'LICENSES\librashader-MPL-2.0.md')
 Copy-Item $UnshieldLicence (Join-Path $S 'LICENSES\unshield-LICENSE.txt')
 Copy-Item $ZlibLicence (Join-Path $S 'LICENSES\zlib-LICENSE.txt')
 $T = "`t"
@@ -163,7 +178,8 @@ $link = @('link', '--target=x86_64-w64-mingw32', '-fuse-ld=lld', '-static', '-mw
           '-lshell32', '-lole32', '-loleaut32', '-luuid', '-lcomdlg32', '-ladvapi32', '-o', '{OUT}')
 $build = @('# the game''s compile and link (tools/windows/release_windows.ps1)', ($cc -join $T),
            "glob${T}{WORK}/gen/gta2/src${T}.c", "glob${T}{WORK}/gen/bink/src${T}.c", ($link -join $T),
-           "copy${T}{TOOLS}/lib/SDL3.dll${T}{DATA}/SDL3.dll")
+           "copy${T}{TOOLS}/lib/SDL3.dll${T}{DATA}/SDL3.dll",
+           "copy${T}{TOOLS}/lib/librashader.dll${T}{DATA}/librashader.dll")
 [IO.File]::WriteAllText((Join-Path $S 'build.txt'), ($build -join "`n") + "`n", $utf8)
 [IO.File]::WriteAllText((Join-Path $S 'release.txt'), $Release, $utf8)
 

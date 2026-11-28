@@ -169,6 +169,8 @@ const char *gta2_shader_hint(void)
     if (shader_pack_state() == SHADER_PACK_WORKING)
         return "PREPARING THE SHADER PACKS";
     const ShaderIndex *ix = shader_pack_index();
+    if (ix && ix->packs && !ix->n)   /* loose presets in shader/ itself are not read (issue #4) */
+        return "NO PRESETS IN THE SHADER PACKS";
     if (!ix || !ix->n)
         return "NEEDS A SHADER PACK IN THE SHADER FOLDER";
     if (st == WR_POST_SHADER_LOADING)

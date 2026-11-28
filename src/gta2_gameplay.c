@@ -396,3 +396,46 @@ void gta2_camera_distance_apply(void)
            opt_choice_label(OPT_CAMERA_DISTANCE, c), orig_walk, wr_rd32(ZOOM_WALK), orig_accel, orig_top,
            wr_rd32(CHASE_ACCEL), wr_rd32(CHASE_TOP));
 }
+
+/* ---- FIXED CAMERA, part of MANUAL CAMERA (issue #6, maintainer 2026-11-28; docs/re/camera_distance.md 7) ------
+ * The game's follow camera raises itself with the car's speed (sub_0041EBF0: target z += 16 x |v| above a
+ * threshold) and leads ahead in the driving direction (240 / 180 px turned by the heading, gone below the
+ * threshold) - the zooming and swinging of issue #6. FIXED CAMERA ON: the wrapper of sub_0041EBF0 takes both back
+ * (target = the car itself), and one fixed extra height for the player's cameras on foot and in a car alike -
+ * the game's own camera height offset cam+0x40 (sub_0041E3D0 adds it to the target, its "debug height") - set to
+ * about the car's far view. MANUAL CAMERA still zooms on top (it scales the zoom +0xA4, independent of the
+ * height). Nothing reads the lead (spawning, culling use the view rect), so a centred camera is safe. Off in a
+ * network game (the view rect drives spawning: every player must run the same simulation). */
+#define FIXED_HEIGHT_Q14 (5u * 0x4000u)   /* the car's far view: 16 x top speed; tuned in play (GTA2_CAM_LOG) */
+
+/* part of MANUAL CAMERA (maintainer 2026-11-28: "together they work well, each alone is meh"): MANUAL CAMERA on =
+ * the fixed height, no speed zoom, no lead, and the zoom on the player's buttons; off = the original camera */
+int gta2_fixed_camera_on(void)
+{
+    return opt_get(OPT_MANUAL_CAMERA) && !wr_rd32(0x00673E2Cu);
+}
+
+/* the player's own cameras (player+0x90, player+0x208) */
+int gta2_is_player_camera(uint32_t cam)
+{
+    uint32_t p = gta2_player();
+    return p && (cam == p + 0x90 || cam == p + 0x208);
+}
+
+/* every frame (next to gta2_camera_distance_apply): the fixed extra height, or back to 0 once we set it */
+void gta2_fixed_camera_apply(void)
+{
+    static int we_set;
+    uint32_t p = gta2_player();
+    if (!p || !wr_mem_valid(p + 0x208 + 0x44, 4))
+        return;
+    uint32_t k = gta2_fixed_camera_on() ? FIXED_HEIGHT_Q14 : 0;
+    if (!k && !we_set)
+        return;   /* never touch the game's own value unless we changed it */
+    for (int i = 0; i < 2; i++) {
+        uint32_t a = p + (i ? 0x208u : 0x90u) + 0x40u;
+        if (wr_rd32(a) != k)
+            wr_wr32(a, k);
+    }
+    we_set = k != 0;
+}

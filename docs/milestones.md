@@ -98,6 +98,35 @@ Targets: Windows, Linux, Android. Renderer: Vulkan 1.1 baseline. Toolkit: winrec
 - [ ] Texture packs in mods/textures (postponed by the maintainer)
 - [ ] Ray tracing: own Vulkan path, all RT GPUs (decided 2026-11-27, start after the maintainer's go)
 
+## v0.9.0 — Day / night, save anywhere, steady camera (maintainer 2026-11-28, from issues #4 and #6)
+- [x] Shader packs: Windows crash with any pack in shader/ fixed (one heap; issue #4), messages in gta2.log, hint
+      for packs without presets; librashader.dll ships with every release (Windows too)
+- [x] DAY / NIGHT (ENHANCEMENTS, off by default): day fully lit, sunset / night / sunrise over the game's own
+      lighting, HUD never darkened; car lights by the time of day (headlights off in the day, sirens and brake
+      lights stay, painted lamps covered, the U-Jerk Truck's four lamps), damage kept (docs/re/car_lights.md)
+- [x] ENHANCEMENTS > DAY / NIGHT page (maintainer 2026-11-28): CYCLE on / off, PRESET 1 / 2 / 3 (24 / 48 / 96 min) /
+      CUSTOM, DAY / SUNSET / NIGHT / SUNRISE lengths to the second (0:00 skips a phase); pause menu: RESTART AREA
+      before RECOMP OPTIONS
+- [x] MANUAL CAMERA = a steady camera: fixed height, no speed zoom, no look-ahead (issue #6;
+      docs/re/camera_distance.md 7)
+- [x] SAVE ANYWHERE (ENHANCEMENTS, off by default): pause SAVE GAME, main-menu LOAD GAME (issue #6;
+      docs/re/save_anywhere.md)
+- [x] KEYBOARD CUSTOM: the keyboard's mapping by situation; minimap defaults = the maintainer's settings
+- [x] PR #7 by maverick-hunter (reviewed, single player only), split into parts (maintainer 2026-11-28): analogue
+      walking always (the stick), analogue pedals when gas / brake are on R2 / L2, ENHANCEMENTS > ANALOGUE STEERING
+      (page: on / off, preset, dead zone, curve, smoothing), PUNCH (X on foot, CUSTOM MAPPING), TURRET AIM, CAMERA PAN
+      (all off by default); ENDLESS SPRINTING cheat
+- [x] ENHANCEMENTS > SPRINT (page): on / off, PRESET 1 (maintainer: 2.5 s, refill after 2.5 s, full in 8 s) / PRESET 2
+      (PR #7: 3.5 s, 0.5 s, 3 s), SPRINT BAR on / off + position (default 52.5 % / 10 %, a sample bar while moving it);
+      the stamina sprint in every scheme; ENHANCEMENTS order: the pages first, then the switches
+- [x] Frame interpolation stays as it is (maintainer 2026-11-28: no further work; 30 fps recommended)
+
+## Planned — Mod support with code (maintainer 2026-11-28)
+- [ ] Mods that bring their own code: a plugin interface (C) for mods/<name>/ (mod.ini + plugin.dll / .so), the game
+      loads them and lists them with their options under RECOMP OPTIONS > MODS - so features such as the analogue
+      controls of PR #7 can come as mods, without a pull request. Android: L (code loading is restricted there).
+      First candidate: ANALOGUE STEERING (built in for v0.9.0).
+
 ## M9 — Multiplayer (optional)
 - [ ] DirectPlay (DPLAYX) -> own network layer (LAN/IP)
 

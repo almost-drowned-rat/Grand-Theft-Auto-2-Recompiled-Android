@@ -217,3 +217,22 @@ smoothing constants (the zoom itself settles; 6.1).
 Verification hint: log `cam+0x98/+0x9C` and the target `+0x10/+0x14` of player+0x90 per tick at
 F = 2 while driving straight and turning. The expected pattern is the error changing sign and the rate
 +0xAC/+0xB0 dropping to 0 repeatedly.
+
+## 7. Speed zoom and look-ahead (FIXED CAMERA, part of MANUAL CAMERA; issue #6, 2026-11-28)
+
+[V] read in the disassembly, [I] inferred.
+
+- The follow `sub_0041F410(cam, ped)`: base target z = max(obj_z - 2.0, 1.0) ([0x5E3E44] / [0x5E3D64]) [V]. On
+  foot that is all - no raise, no lead. In a car (ped+0x16C, or getting in / out: ped+0x27C 6 / 7, car ped+0x154)
+  it calls `sub_0041EBF0(cam, car, &x, &y, &z)` (thiscall, ret 0x10) [V].
+- `sub_0041EBF0`: speed = |velocity| x 16 ([0x5E3E8C]); above 1.5 ([0x5E3F74]) `*z += speed` (the speed zoom) and a
+  lead L = 240 (heading 45..135 / 225..315 deg) or 180 px, x0.75 with a trailer, x(1 - min(cam+0x44, 64)/128),
+  turned by the velocity heading and added to *x / *y [V]. Trains always +8.0 [V]. Below the threshold both vanish
+  (a jump of about 2.5 blocks at stop / start) [I].
+- The zoom +0xA4 is unaffected (only [0x5E3EB4] / [0x5E3ECC]); cam+0x40 is the game's camera height offset,
+  added to the target by `sub_0041E3D0` [V]. Nothing reads the lead: spawning, removal and culling use the view
+  rect [V widescreen.md] - a centred camera is safe.
+- Correction to 6: [0x5E3DCC] = 12 x [0x5E3D34] = 12/64 = 0.1875 (0x00401BD0 is an integer multiply) [V].
+- Port (MANUAL CAMERA on, single player): the wrapper of `sub_0041EBF0` puts *x / *y / *z back (no lead, no speed
+  zoom) for the player's cameras (player+0x90 / +0x208); cam+0x40 = 5.0 every frame (the game's own peak in play
+  was 5.76; the maintainer kept 5.0). GTA2_CAM_LOG=1 logs the speed raise peak.

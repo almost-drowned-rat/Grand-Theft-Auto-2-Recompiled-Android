@@ -14,6 +14,7 @@
  */
 #include "gta2_render.h"
 #include "../gta2_options.h"
+#include "../gta2_daynight.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -65,6 +66,19 @@ typedef struct light {
 static light g_lights[256];
 static int g_nlights;
 static float g_ambient = 51.0f;
+/* DAY / NIGHT (gta2_daynight.c): set per frame in gbh_SetAmbient; g_dn = the cycle changes this frame's light */
+static int g_dn;
+static float g_dn_amb[3];
+static uint64_t g_dn_frame;   /* the frame it was set in: menus never call SetAmbient, so it must not linger */
+static uint64_t g_dn_end_frame = ~0ull;   /* world_end's frame: the HUD's own SetAmbient(1.0) stays untouched */
+static int g_trace = -1;   /* WR_GBH_TRACE=<frame>: every draw of that frame into the log */
+void gbh_daynight_world_end(void)
+{
+    g_dn = 0;
+    g_dn_end_frame = g_gfx.frames;
+    if (g_trace > 0 && (uint32_t)g_trace == (uint32_t)g_gfx.frames)
+        wr_log("trace: DAY / NIGHT world end (HUD next)");
+}
 
 static float g_win[4];             /* SetWindow reject rect: left, top, right, bottom */
 static uint32_t g_globals;         /* guest GBH_Globals (0xA0 bytes) */
@@ -438,13 +452,51 @@ static void apply_lights(uint32_t verts, int n, uint32_t shade)
     }
 }
 
-static int g_trace = -1;
+/* DAY / NIGHT: apply_lights with the ambient as a colour (r, g, b) - the original formula, so the day (the
+ * game's own ambient, untinted) is the original picture to the bit. */
+static void apply_lights_dn(uint32_t verts, int n, uint32_t shade)
+{
+    float k = (float)(shade & 0xFF) / 255.0f;
+    for (int i = 0; i < n; i++) {
+        uint32_t v = verts + 0x20u * (uint32_t)i;
+        uint32_t wp = verts + 0x80u + 0x20u * (uint32_t)i;
+        float px = rdf(wp), py = rdf(wp + 4), pz = rdf(wp + 8);
+        float R = 0, G = 0, B = 0;
+        for (int l = 0; l < g_nlights; l++) {
+            const light *L = &g_lights[l];
+            if ((L->packed & 0x30000u) != 0x10000u)
+                continue;
+            float dx = px - L->x, dy = py - L->y, dz = pz - L->z;
+            float d2 = dx * dx + dy * dy + dz * dz;
+            if (d2 > L->radius2)
+                continue;
+            float f = (L->radius - sqrtf(d2)) * L->inv_radius;
+            if (f <= 0)
+                continue;
+            f *= L->intensity;
+            R += L->r * f;
+            G += L->g * f;
+            B += L->b * f;
+        }
+        uint32_t c = wr_rd32(v + 0x10);
+        float r = (float)((c >> 16) & 255) * k * R + g_dn_amb[0];
+        float g = (float)((c >> 8) & 255) * k * G + g_dn_amb[1];
+        float b = (float)(c & 255) * k * B + g_dn_amb[2];
+        if (r > 255) r = 255;
+        if (g > 255) g = 255;
+        if (b > 255) b = 255;
+        /* fistp in the DLL's round-down mode, as apply_lights */
+        uint32_t ir = (uint32_t)floorf(r), ig = (uint32_t)floorf(g), ib = (uint32_t)floorf(b);
+        wr_wr32(v + 0x10, (c & 0xFF000000u) | ir << 16 | ig << 8 | ib);
+    }
+}
 
 static void trace_draw(const char *what, uint32_t flags, uint32_t texva, uint32_t verts, int n)
 {
     gtex *t = texva ? tex_find(texva) : NULL;
     char b[512];
-    size_t o = (size_t)snprintf(b, sizeof b, "%s f=%05X tex=%ux%u", what, flags, t ? t->w : 0, t ? t->h : 0);
+    size_t o = (size_t)snprintf(b, sizeof b, "%s f=%05X tex=%ux%u dn=%d", what, flags, t ? t->w : 0, t ? t->h : 0,
+                                g_dn && g_dn_frame == g_gfx.frames);
     for (int i = 0; i < n && o < sizeof b; i++) {
         uint32_t v = verts + 0x20u * (uint32_t)i;
         float x, y, z, u, vv;
@@ -529,8 +581,12 @@ static void draw_core(uint32_t flags, uint32_t texva, uint32_t verts, uint32_t s
         }
         wr_wr32(v + 0x14, 0);
     }
-    if ((flags & 0x8000u) && g_ambient != 255.0f)
-        apply_lights(verts, n, shade);
+    if (flags & 0x8000u) {
+        if (g_dn && g_dn_frame == g_gfx.frames)
+            apply_lights_dn(verts, n, shade);
+        else if (g_ambient != 255.0f)
+            apply_lights(verts, n, shade);
+    }
 
     gvert gv[6];
     gvert q[4];
@@ -1065,6 +1121,12 @@ WR_HANDLER(gbh_SetAmbient)
 {
     (void)base;
     g_ambient = rdf(g_esp + 4) * 255.0f;
+    /* the world's ambient (0x00472132) only: the HUD sets its own 1.0 after the world (0x004C6DAE, sub_004C6D90) */
+    g_dn = g_dn_end_frame != g_gfx.frames ? gta2_daynight_ambient(g_ambient, g_dn_amb) : 0;
+    g_dn_frame = g_gfx.frames;
+    if (g_trace > 0 && (uint32_t)g_trace == (uint32_t)g_gfx.frames)
+        wr_log("trace: SetAmbient %.1f -> day / night %d (%.0f %.0f %.0f)", g_ambient, g_dn, g_dn_amb[0],
+               g_dn_amb[1], g_dn_amb[2]);
     WR_RET(0, 1);
 }
 

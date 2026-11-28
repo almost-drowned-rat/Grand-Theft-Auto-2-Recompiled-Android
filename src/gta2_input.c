@@ -18,6 +18,7 @@
 #include <SDL3/SDL.h>
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 
 int wr_reg_get_dword(const char *key, const char *name, uint32_t *out);
 
@@ -27,7 +28,9 @@ enum { ACT_UP, ACT_DOWN, ACT_LEFT, ACT_RIGHT, ACT_ATTACK, ACT_ENTER, ACT_JUMP, A
        ACT_SPECIAL, ACT_SPECIAL2, ACT_STATUS, ACT_N, ACT_ESCAPE = 100, ACT_RADIO_NEXT, ACT_RADIO_PREV, ACT_SPRINT,
        /* the camera (maintainer 2026-11-27): CAMERA and ZOOM OUT step CAMERA DISTANCE out, ZOOM IN in, each
         * going round at the end - one button reaches every step */
-       ACT_CAMERA, ACT_ZOOM_IN, ACT_ZOOM_OUT };
+       ACT_CAMERA, ACT_ZOOM_IN, ACT_ZOOM_OUT,
+       /* ANALOGUE: attack with the weapon put away (gta2_punch_pressed) */
+       ACT_PUNCH };
 
 static const uint8_t k_default_dik[ACT_N] = { 0xC8, 0xD0, 0xCB, 0xCD, 0x1D, 0x1C, 0x39, 0x2C, 0x2D, 0x0F, 0x38, 0x36 };
 
@@ -125,7 +128,12 @@ static int modern_action(int c, int driving)
  * settings.ini mbind_<slot> = control number, -1 none (the per-button modern_bind_<n> of before is unused). */
 enum { MF_SPRINT, MF_ATTACK, MF_JUMP, MF_ENTER, MF_PREV, MF_NEXT, MF_SP1, MF_SP2, MF_SP3,
        MC_GAS, MC_BRAKE, MC_HB, MC_ATTACK, MC_EXIT, MC_PREV, MC_NEXT, MC_SP1, MC_SP2, MC_SP3,
-       MK_CAMERA, MK_ZIN, MK_ZOUT, MS_N };
+       MK_CAMERA, MK_ZIN, MK_ZOUT,
+       MF_PUNCH,   /* ENHANCEMENTS > PUNCH (PR #7; maintainer 2026-11-28): on foot, X by default; appended - the saved
+                    * mbind_<n> of the slots before keep their numbers */
+       MC_RADIO_NEXT, MC_RADIO_PREV,   /* PR #7's d-pad radio as a choice (maintainer 2026-11-28): unbound by default -
+                                        * the right stick keeps the radio until a button is chosen */
+       MS_N };
 #define CTX_FOOT 1
 #define CTX_CAR  2
 static const struct { const char *label; int ctl, ctx, act; } k_mslot[MS_N] = {
@@ -151,6 +159,9 @@ static const struct { const char *label; int ctl, ctx, act; } k_mslot[MS_N] = {
     [MK_CAMERA] = { "CAMERA", WR_PAD_LT, CTX_FOOT | CTX_CAR, ACT_CAMERA },
     [MK_ZIN] = { "ZOOM IN", -1, CTX_FOOT | CTX_CAR, ACT_ZOOM_IN },
     [MK_ZOUT] = { "ZOOM OUT", -1, CTX_FOOT | CTX_CAR, ACT_ZOOM_OUT },
+    [MF_PUNCH] = { "PUNCH", WR_PAD_WEST, CTX_FOOT, ACT_PUNCH },   /* only with ENHANCEMENTS > PUNCH */
+    [MC_RADIO_NEXT] = { "RADIO NEXT", -1, CTX_CAR, ACT_RADIO_NEXT },
+    [MC_RADIO_PREV] = { "RADIO PREVIOUS", -1, CTX_CAR, ACT_RADIO_PREV },
 };
 
 static int is_dpad(int c)
@@ -207,7 +218,14 @@ static const char *sprint_key(void)
     return b;
 }
 
-static int mslot_takes(int c) { return c == -1 || modern_button(c) || is_dpad(c); }   /* -1 = none */
+static int is_rstick(int c)
+{
+    return c == WR_PAD_RIGHT_STICK_UP || c == WR_PAD_RIGHT_STICK_DOWN || c == WR_PAD_RIGHT_STICK_LEFT ||
+           c == WR_PAD_RIGHT_STICK_RIGHT;
+}
+/* -1 = none; the right stick's four directions too (PR #7's vehicle fire as a choice, maintainer 2026-11-28) - but only
+ * for IN A CAR functions (gta2_bind_set_pad): on foot the right stick aims */
+static int mslot_takes(int c) { return c == -1 || modern_button(c) || is_dpad(c) || is_rstick(c); }
 
 static void mbind_load(void)
 {
@@ -235,14 +253,38 @@ static int modern_slot(int c, int driving)
     return -1;
 }
 
+/* The PR's ANALOGUE layout (maverick-hunter) split into its parts (maintainer 2026-11-28) - every scheme keeps its own
+ * buttons; on top, for every scheme (single player only), -2 = not changed:
+ *   - analogue pedals: when gas is mapped to R2 / brake to L2 the trigger's press is left to gta2_feel_car_pre
+ *   - CAMERA PAN: with SPECIAL 2 held (Select) the right stick is the four directions of the game's look-around
+ *   - TURRET AIM: in a turret vehicle the right stick's left / right fire (gta2_turret_pre aims) */
+static int extra_act(int c, int driving)
+{
+    if (wr_rd32(0x00673E2Cu))
+        return -2;   /* a network game: the original */
+    switch (c) {
+    case WR_PAD_RT: return driving && gta2_gas_on_rt() ? -1 : -2;
+    case WR_PAD_LT: return driving && gta2_brake_on_lt() ? -1 : -2;
+    case WR_PAD_RIGHT_STICK_UP: return gta2_pan_held() ? ACT_UP : -2;
+    case WR_PAD_RIGHT_STICK_DOWN: return gta2_pan_held() ? ACT_DOWN : -2;
+    case WR_PAD_RIGHT_STICK_LEFT:
+        return gta2_pan_held() ? ACT_LEFT : driving && gta2_turret_active() ? ACT_ATTACK : -2;
+    case WR_PAD_RIGHT_STICK_RIGHT:
+        return gta2_pan_held() ? ACT_RIGHT : driving && gta2_turret_active() ? ACT_ATTACK : -2;
+    default: return -2;
+    }
+}
+
 /* MODERN: the game action for control c - its function if one is on it, else the sticks / d-pad / START
  * of the layout above; a MODERN button without a function does nothing. ACT_SPRINT without SPRINT on is
- * a jump (as before). */
+ * a jump (as before); PUNCH without ENHANCEMENTS > PUNCH does nothing. */
 static int modern_act(int c, int driving)
 {
     int s = modern_slot(c, driving);
     if (s >= 0) {
         int a = k_mslot[s].act;
+        if (a == ACT_PUNCH && !opt_get(OPT_PUNCH))
+            return -1;
         return a == ACT_SPRINT && !opt_get(OPT_SPRINT) ? ACT_JUMP : a;
     }
     if (modern_button(c))
@@ -297,16 +339,81 @@ static void bind_load(void)
 #define BIND_SPRINT 12      /* the same index on both devices */
 #define KEY_SPRINT_DEFAULT 0x2A   /* Left Shift: unused by the game */
 
-static int pad_modern(int keyboard) { return !keyboard && opt_get(OPT_CONTROL_SCHEME) == 1; }
+static int pad_modern(int keyboard) { return !keyboard && SCHEME_MODERNISH(); }
+
+/* ---- KEYBOARD MODERN's own mapping (maintainer 2026-11-27: "the full custom mapping layout for the keyboard
+ * too", the MODERN layout by situation): every MODERN function (k_mslot: ON FOOT / IN A CAR / CAMERA) on a key of
+ * the player's choice, plus MOVE (walk where it points on foot, steer in a car), RADIO in a car and MENU. One key
+ * per function per situation; on foot and in a car are apart. Independent of the CONTROLLER scheme (before, the
+ * keyboard was a fixed controller - I/J/K/L ... - and CONTROLLER decided). settings.ini kbind_<slot> = DirectInput
+ * key code, 0 none (profiles as the pad: p<N>_kbind_<slot>; STOCK = these defaults). In play the keys reach the
+ * game through kmod_hook; the menus keep their own keys (arrows, Return, Escape). */
+enum { KM_UP = MS_N, KM_DOWN, KM_LEFT, KM_RIGHT, KM_RADIO_NEXT, KM_RADIO_PREV, KM_MENU, KS_N };
+static const uint8_t k_kslot_default[KS_N] = {
+    [MF_SPRINT] = 0x25 /* K */, [MF_ATTACK] = 0x19 /* P */, [MF_JUMP] = 0x26 /* L */, [MF_ENTER] = 0x17 /* I */,
+    [MF_PREV] = 0x16 /* U */, [MF_NEXT] = 0x18 /* O */, [MF_SP1] = 0x21 /* F */, [MF_SP2] = 0x22 /* G */,
+    [MF_SP3] = 0x2E /* C */,
+    [MC_GAS] = 0x25 /* K */, [MC_BRAKE] = 0x24 /* J */, [MC_HB] = 0x26 /* L */, [MC_ATTACK] = 0x19 /* P */,
+    [MC_EXIT] = 0x17 /* I */, [MC_PREV] = 0x16 /* U */, [MC_NEXT] = 0x18 /* O */, [MC_SP1] = 0x21 /* F */,
+    [MC_SP2] = 0x22 /* G */, [MC_SP3] = 0x2E /* C */,
+    [MK_CAMERA] = 0x2C /* Z */, [MK_ZIN] = 0, [MK_ZOUT] = 0, [MF_PUNCH] = 0x2D /* X */,
+    [KM_UP] = 0x11 /* W */, [KM_DOWN] = 0x1F /* S */, [KM_LEFT] = 0x1E /* A */, [KM_RIGHT] = 0x20 /* D */,
+    [KM_RADIO_NEXT] = 0xCD /* Right */, [KM_RADIO_PREV] = 0xCB /* Left */, [KM_MENU] = 0x1C /* Return */,
+};
+static uint8_t g_kbind[KS_N];
+static int g_kbind_loaded;
+
+/* maintainer 2026-11-27: the presets CLASSIC / MODERN / KEYBOARD + MOUSE stay; the keyboard's CUSTOM MAPPING page
+ * opens only this layout by situation, and it drives the game with KEYBOARD CUSTOM (a key set there switches to it) */
+#define KEY_SCHEME_CUSTOM 3
+static int kb_modern(int keyboard) { return keyboard != 0; }
+static int kb_custom(void) { return opt_get(OPT_KEY_SCHEME) == KEY_SCHEME_CUSTOM; }
+
+static const char *kslot_label(int i)
+{
+    static const char *const k[] = { "UP", "DOWN", "LEFT", "RIGHT", "RADIO NEXT", "RADIO PREVIOUS", "MENU" };
+    return i >= 0 && i < MS_N ? k_mslot[i].label : i >= MS_N && i < KS_N ? k[i - MS_N] : "";
+}
+
+static int kslot_ctx(int i)
+{
+    if (i >= 0 && i < MS_N)
+        return k_mslot[i].ctx;
+    return i == KM_RADIO_NEXT || i == KM_RADIO_PREV ? CTX_CAR : CTX_FOOT | CTX_CAR;
+}
+
+static void kbind_load(void)
+{
+    if (g_kbind_loaded)
+        return;
+    g_kbind_loaded = 1;
+    for (int i = 0; i < KS_N; i++) {
+        char key[24];
+        pkey(key, sizeof key, "kbind", i);
+        int v = stock() ? k_kslot_default[i] : wr_settings_get_int(key, k_kslot_default[i]);
+        g_kbind[i] = v >= 0 && v < 256 && v != 0x01 ? (uint8_t)v : k_kslot_default[i];   /* Esc: the pause */
+    }
+}
+
+static int kdown(const uint8_t *kb, int slot)   /* a KEYBOARD MODERN slot's key held */
+{
+    kbind_load();
+    return g_kbind[slot] && (kb[g_kbind[slot]] & 0x80);
+}
 
 /* the keyboard's lines: the 12 game actions, SPRINT, then CAMERA / ZOOM IN / ZOOM OUT */
 #define KB_N (ACT_N + 4)
 static int kb_fn(int i) { return i <= BIND_SPRINT ? i : BIND_CAM0 + (i - BIND_SPRINT - 1); }   /* -> k_fn */
 static int kb_act(int i) { return i < ACT_N ? i : i == BIND_SPRINT ? BIND_SPRINT : k_fn[kb_fn(i)].act; }
 
-int gta2_bind_count(int keyboard) { return keyboard ? KB_N : pad_modern(0) ? MS_N : GTA2_BIND_N; }
+int gta2_bind_count(int keyboard)
+{
+    return kb_modern(keyboard) ? KS_N : keyboard ? KB_N : pad_modern(0) ? MS_N : GTA2_BIND_N;
+}
 const char *gta2_bind_label(int keyboard, int i)
 {
+    if (kb_modern(keyboard))
+        return kslot_label(i);
     if (pad_modern(keyboard))
         return i >= 0 && i < MS_N ? k_mslot[i].label : "";
     if (keyboard)
@@ -323,9 +430,9 @@ typedef struct { const char *head; int bind; } bind_row;
 #define B(i) { NULL, i }
 static const bind_row k_rows_modern[] = {
     H("ON FOOT"), B(MF_SPRINT), B(MF_ATTACK), B(MF_JUMP), B(MF_ENTER), B(MF_PREV), B(MF_NEXT),
-    B(MF_SP1), B(MF_SP2), B(MF_SP3), H(""),
+    B(MF_SP1), B(MF_SP2), B(MF_SP3), B(MF_PUNCH), H(""),
     H("IN A CAR"), B(MC_GAS), B(MC_BRAKE), B(MC_HB), B(MC_ATTACK), B(MC_EXIT), B(MC_PREV), B(MC_NEXT),
-    B(MC_SP1), B(MC_SP2), B(MC_SP3), H(""),
+    B(MC_SP1), B(MC_SP2), B(MC_SP3), B(MC_RADIO_NEXT), B(MC_RADIO_PREV), H(""),
     H("CAMERA"), B(MK_CAMERA), B(MK_ZIN), B(MK_ZOUT),
 };
 static const bind_row k_rows_custom[] = {   /* k_fn indices */
@@ -335,6 +442,15 @@ static const bind_row k_rows_custom[] = {   /* k_fn indices */
     H("SPECIAL"), B(9), B(10), B(11), H(""),
     H("RADIO + MENU"), B(13), B(14), B(15), H(""),
     H("CAMERA"), B(16), B(17), B(18),
+};
+static const bind_row k_rows_kmodern[] = {   /* KEYBOARD MODERN (kslot) */
+    H("MOVE"), B(KM_UP), B(KM_DOWN), B(KM_LEFT), B(KM_RIGHT), H(""),
+    H("ON FOOT"), B(MF_SPRINT), B(MF_ATTACK), B(MF_JUMP), B(MF_ENTER), B(MF_PREV), B(MF_NEXT),
+    B(MF_SP1), B(MF_SP2), B(MF_SP3), B(MF_PUNCH), H(""),
+    H("IN A CAR"), B(MC_GAS), B(MC_BRAKE), B(MC_HB), B(MC_ATTACK), B(MC_EXIT), B(MC_PREV), B(MC_NEXT),
+    B(MC_SP1), B(MC_SP2), B(MC_SP3), B(KM_RADIO_NEXT), B(KM_RADIO_PREV), H(""),
+    H("CAMERA"), B(MK_CAMERA), B(MK_ZIN), B(MK_ZOUT), H(""),
+    H("GAME"), B(KM_MENU),
 };
 static const bind_row k_rows_keys[] = {     /* keyboard lines (kb_fn) */
     H("MOVE"), B(0), B(1), B(2), B(3), H(""),
@@ -348,11 +464,15 @@ static const bind_row k_rows_keys[] = {     /* keyboard lines (kb_fn) */
 
 static const bind_row *bind_rows(int keyboard, int *n)
 {
+    if (kb_modern(keyboard)) {
+        *n = (int)(sizeof k_rows_kmodern / sizeof k_rows_kmodern[0]);
+        return k_rows_kmodern;
+    }
     if (keyboard) {
         *n = (int)(sizeof k_rows_keys / sizeof k_rows_keys[0]);
         return k_rows_keys;
     }
-    if (opt_get(OPT_CONTROL_SCHEME) == 1) {
+    if (SCHEME_MODERNISH()) {
         *n = (int)(sizeof k_rows_modern / sizeof k_rows_modern[0]);
         return k_rows_modern;
     }
@@ -404,6 +524,15 @@ void gta2_bind_value(int keyboard, int i, char *out, size_t cap)
 {
     bind_load();
     int c = -1;
+    if (kb_modern(keyboard)) {
+        kbind_load();
+        uint8_t k = i >= 0 && i < KS_N ? g_kbind[i] : 0;
+        if (k)
+            wr_key_name(k, out, cap);
+        else
+            snprintf(out, cap, "-");
+        return;
+    }
     if (keyboard) {
         uint8_t k = i >= 0 && i < KB_N ? key_of(kb_act(i)) : 0;
         if (k)
@@ -430,6 +559,8 @@ int gta2_bind_set_pad(int i, int control)
     if (pad_modern(0)) {
         if (i < 0 || i >= MS_N || control < 0 || !mslot_takes(control))
             return 0;
+        if (is_rstick(control) && k_mslot[i].ctx != CTX_CAR)
+            return 0;   /* the right stick only for IN A CAR functions (on foot it aims) */
         mbind_load();
         /* the function that had this button in the same situation gets i's old one (on foot and in a
          * car are apart; the camera counts for both) */
@@ -476,8 +607,28 @@ static void key_store(int act, uint8_t dik)
  * read its controls again (sub_0044BF30). */
 void gta2_bind_set_key(int i, uint8_t dik)
 {
-    if (stock() || i < 0 || i >= KB_N)
+    if (stock())
         return;   /* STOCK stays as it is */
+    if (kb_modern(1)) {   /* KEYBOARD MODERN: the slot that had this key in the same situation gets i's old one */
+        if (i < 0 || i >= KS_N || !dik || dik == 0x01)
+            return;
+        kbind_load();
+        char key[24];
+        for (int j = 0; j < KS_N; j++)
+            if (j != i && g_kbind[j] == dik && (kslot_ctx(j) & kslot_ctx(i))) {
+                g_kbind[j] = g_kbind[i];
+                pkey(key, sizeof key, "kbind", j);
+                wr_settings_set_int(key, g_kbind[j]);
+            }
+        g_kbind[i] = dik;
+        pkey(key, sizeof key, "kbind", i);
+        wr_settings_set_int(key, dik);
+        if (!kb_custom())
+            opt_set(OPT_KEY_SCHEME, KEY_SCHEME_CUSTOM);   /* the change takes effect at once */
+        return;
+    }
+    if (i < 0 || i >= KB_N)
+        return;
     int act = kb_act(i);
     uint8_t old = key_of(act);
     for (int j = 0; j < KB_N; j++)
@@ -491,6 +642,16 @@ void gta2_bind_defaults(int keyboard)
 {
     if (stock())
         return;   /* STOCK is the defaults already */
+    if (kb_modern(keyboard)) {
+        for (int i = 0; i < KS_N; i++) {
+            char key[24];
+            pkey(key, sizeof key, "kbind", i);
+            g_kbind[i] = k_kslot_default[i];
+            wr_settings_set_int(key, g_kbind[i]);
+        }
+        g_kbind_loaded = 1;
+        return;
+    }
     if (keyboard) {
         const char *k = "HKEY_LOCAL_MACHINE\\SOFTWARE\\DMA Design Ltd\\GTA2\\Control";
         char name[8];
@@ -549,6 +710,7 @@ void gta2_bind_profile_set(int p)
     }
     g_bind_loaded = 0;
     g_mbind_loaded = 0;
+    g_kbind_loaded = 0;
     g_dik_time = 0;
     wr_log("controls: profile %s", p ? (p == 1 ? "1" : p == 2 ? "2" : "3") : "STOCK");
 }
@@ -576,15 +738,18 @@ static uint8_t map(int control)
     if (g_gta2_frontend_ms && wr_time_ms() - g_gta2_frontend_ms < 250)
         return map_menu(control);
     int driving = gta2_player_driving();
-    int scheme = opt_get(OPT_CONTROL_SCHEME);
     /* MODERN: the player's own functions (modern_act); the camera buttons: gta2_camera_keys */
-    int a = scheme == 1 ? modern_act(control, driving) : scheme == 2 ? custom_action(control) : pad_action(control);
+    int a = extra_act(control, driving);   /* analogue pedals, CAMERA PAN, TURRET AIM: every scheme */
+    if (a == -2)
+        a = SCHEME_MODERNISH() ? modern_act(control, driving) : SCHEME_IS(SCHEME_CUSTOM) ? custom_action(control) : pad_action(control);
     if (a < 0 || is_cam_act(a))
         return 0;
     if (a == ACT_ESCAPE)
         return 0x01;
     if (a == ACT_SPRINT)
         return 0;   /* read by the sprint itself (gta2_sprint_pressed) */
+    if (a == ACT_PUNCH)
+        a = ACT_ATTACK;   /* the game only knows "attack"; gta2_punch_swap makes it a punch (gta2_state.c) */
     if (a == ACT_RADIO_NEXT || a == ACT_RADIO_PREV)
         return a == ACT_RADIO_NEXT ? 0x3C : 0x3B;   /* F2 / F1 */
     uint32_t now = wr_time_ms();
@@ -606,13 +771,12 @@ void gta2_input_register(void) { wr_pad_set_map(map); }
 /* the pad button of a camera function under the current CONTROLLER scheme, -1 none */
 static int cam_pad_button(int act)
 {
-    int sc = opt_get(OPT_CONTROL_SCHEME);
-    if (sc == 1) {
-        mbind_load();
+    if (SCHEME_MODERNISH()) {
+        mbind_load();   /* (a brake on L2 moves CAMERA to the brake's old button: one function per button) */
         for (int i = 0; i < MS_N; i++)
             if (k_mslot[i].act == act)
                 return g_mbind[i];
-    } else if (sc == 2) {
+    } else if (SCHEME_IS(SCHEME_CUSTOM)) {
         bind_load();
         return g_bind[BIND_CAM0 + (act - ACT_CAMERA)];
     }
@@ -636,7 +800,8 @@ void gta2_camera_keys(void)
     for (int k = 0; k < 3; k++) {
         int act = ACT_CAMERA + k, b = cam_pad_button(act);
         uint8_t key = key_of(act);
-        int down = (key && (kb[key] & 0x80)) || (b >= 0 && (pad >> b & 1));
+        int down = (key && (kb[key] & 0x80)) || (b >= 0 && (pad >> b & 1)) ||
+                   (kb_custom() && kdown(kb, MK_CAMERA + k));   /* KEYBOARD CUSTOM */
         if (down && !was[k])
             c = act == ACT_ZOOM_IN ? (c + n - 1) % n : (c + 1) % n;
         was[k] = down;
@@ -653,13 +818,78 @@ int gta2_sprint_pressed(void)
         return 0;
     uint8_t kb[256];
     wr_keys_keyboard_dik(kb);
-    if (kb[key_of(BIND_SPRINT)] & 0x80)
-        return 1;
+    if (kb_custom() ? kdown(kb, MF_SPRINT) : (kb[key_of(BIND_SPRINT)] & 0x80) != 0)
+        return 1;   /* KEYBOARD CUSTOM: its SPRINT key; else the keyboard's sprint key (Left Shift) */
     uint64_t c = wr_pad_controls();
-    int scheme = opt_get(OPT_CONTROL_SCHEME);
     bind_load();
-    int ctl = scheme == 1 ? modern_fn_button(MF_SPRINT) : scheme == 2 ? g_bind[BIND_SPRINT] : WR_PAD_LSTICK;
+    int ctl = SCHEME_MODERNISH() ? modern_fn_button(MF_SPRINT) : SCHEME_IS(SCHEME_CUSTOM) ? g_bind[BIND_SPRINT] : WR_PAD_LSTICK;
     return ctl >= 0 && (int)(c >> ctl & 1);
+}
+
+/* CAMERA PAN (ENHANCEMENTS; PR #7, its own switch since 2026-11-28): while the SPECIAL 2 button of this situation is held
+ * (MODERN: Select by default, CUSTOM: its binding, CLASSIC: L2) the right stick is the four directions of the game's
+ * Special 2 look-around, and its aim (on foot) / fire (in a car) is off. Single player only. */
+int gta2_pan_held(void)
+{
+    if (!opt_get(OPT_CAMERA_PAN) || wr_rd32(0x00673E2Cu) || gta2_pause_open())
+        return 0;
+    int c;
+    if (SCHEME_MODERNISH())
+        c = modern_fn_button(gta2_player_driving() ? MC_SP2 : MF_SP2);
+    else if (SCHEME_IS(SCHEME_CUSTOM)) {
+        bind_load();
+        c = g_bind[10];   /* SPECIAL 2 */
+    } else
+        c = WR_PAD_LT;    /* CLASSIC: special 2 on L2 */
+    return c >= 0 && (int)(wr_pad_controls() >> c & 1);
+}
+
+/* PUNCH held (ENHANCEMENTS > PUNCH, on foot, single player): MODERN's PUNCH button (X by default, CUSTOM MAPPING moves
+ * it) or KEYBOARD CUSTOM's PUNCH key. The same press is the game's ATTACK (map / kmod_hook); gta2_state.c puts the
+ * weapon away meanwhile. */
+int gta2_punch_pressed(void)
+{
+    if (!opt_get(OPT_PUNCH) || wr_rd32(0x00673E2Cu) || gta2_pause_open() || gta2_player_driving())
+        return 0;
+    if (SCHEME_MODERNISH()) {
+        int c = modern_fn_button(MF_PUNCH);
+        if (c >= 0 && (wr_pad_controls() >> c & 1))
+            return 1;
+    }
+    if (kb_custom()) {
+        uint8_t kb[256];
+        wr_keys_keyboard_dik(kb);
+        if (kdown(kb, MF_PUNCH))
+            return 1;
+    }
+    return 0;
+}
+
+/* analogue pedals (PR #7): gas mapped to R2 / brake to L2 in the current scheme */
+int gta2_gas_on_rt(void)
+{
+    if (SCHEME_MODERNISH()) {
+        mbind_load();
+        return g_mbind[MC_GAS] == WR_PAD_RT;
+    }
+    if (SCHEME_IS(SCHEME_CUSTOM)) {
+        bind_load();
+        return g_bind[0] == WR_PAD_RT;   /* FORWARD = the gas in a car */
+    }
+    return 0;
+}
+
+int gta2_brake_on_lt(void)
+{
+    if (SCHEME_MODERNISH()) {
+        mbind_load();
+        return g_mbind[MC_BRAKE] == WR_PAD_LT;
+    }
+    if (SCHEME_IS(SCHEME_CUSTOM)) {
+        bind_load();
+        return g_bind[1] == WR_PAD_LT;   /* BACKWARD = brake / reverse */
+    }
+    return 0;
 }
 
 /* ---- KEYBOARD schemes (maintainer 2026-11-26) -----------------------------------------------
@@ -723,11 +953,65 @@ static void kbm_hook(uint8_t st[256])
     if (pulse_prev > 0) { if (pulse_prev-- > 1) st[key_of(ACT_PREV)] = 0x80; }
 }
 
+/* KEYBOARD CUSTOM in play (not in the frontend or the pause menu: their own keys) */
+static int kmod_active(void)
+{
+    return kb_custom() && !gta2_pause_open() &&
+           !(g_gta2_frontend_ms && wr_time_ms() - g_gta2_frontend_ms < 250);
+}
+
+/* KEYBOARD MODERN: the player's keys -> the game's own keys for this situation. The game's twelve action keys
+ * and every bound key are taken out first (only this mapping drives); Escape stays the pause. On foot MOVE is the
+ * walking direction (gta2_kbm_sticks -> the MODERN on-foot step), in a car LEFT / RIGHT steer. SPRINT and the
+ * camera read their keys themselves (gta2_sprint_pressed, gta2_camera_keys). */
+static void kmod_hook(uint8_t st[256])
+{
+    if (!kmod_active())
+        return;
+    uint8_t raw[256];
+    memcpy(raw, st, sizeof raw);
+    kbind_load();
+    for (int a = 0; a < ACT_N; a++)
+        st[key_of(a)] = 0;
+    for (int i = 0; i < KS_N; i++)
+        if (g_kbind[i])
+            st[g_kbind[i]] = 0;
+    int driving = gta2_player_driving(), ctx = driving ? CTX_CAR : CTX_FOOT;
+    for (int i = 0; i < KS_N; i++) {
+        if (!(kslot_ctx(i) & ctx) || !kdown(raw, i))
+            continue;
+        int a;
+        switch (i) {
+        case KM_UP: case KM_DOWN: a = -1; break;   /* on foot: the walking direction; in a car: nothing (as the pad) */
+        case KM_LEFT: a = driving ? ACT_LEFT : -1; break;
+        case KM_RIGHT: a = driving ? ACT_RIGHT : -1; break;
+        case KM_RADIO_NEXT: a = ACT_RADIO_NEXT; break;
+        case KM_RADIO_PREV: a = ACT_RADIO_PREV; break;
+        case KM_MENU: a = ACT_ESCAPE; break;
+        default:
+            a = k_mslot[i].act;
+            if (a == ACT_SPRINT)
+                a = opt_get(OPT_SPRINT) ? -1 : ACT_JUMP;   /* SPRINT off: a jump (as the pad) */
+            if (a == ACT_PUNCH)   /* PUNCH: the game's attack; the weapon is put away meanwhile (gta2_punch_pressed) */
+                a = opt_get(OPT_PUNCH) ? ACT_ATTACK : -1;
+            break;
+        }
+        if (a < 0 || is_cam_act(a))
+            continue;
+        if (a == ACT_ESCAPE)
+            st[0x01] = 0x80;
+        else if (a == ACT_RADIO_NEXT || a == ACT_RADIO_PREV)
+            st[a == ACT_RADIO_NEXT ? 0x3C : 0x3B] = 0x80;   /* F2 / F1 */
+        else if (a < ACT_N)
+            st[key_of(a)] = 0x80;
+    }
+}
+
 void gta2_keys_apply(void)
 {
     int sc = opt_get(OPT_KEY_SCHEME);
-    wr_pad_keyboard_as_pad(sc == 1);
-    g_wr_dik_hook = sc == 2 ? kbm_hook : NULL;
+    wr_pad_keyboard_as_pad(sc == 1);   /* MODERN: the keyboard as a fixed controller (preset, unchanged) */
+    g_wr_dik_hook = sc == 2 ? kbm_hook : sc == KEY_SCHEME_CUSTOM ? kmod_hook : NULL;
 }
 
 /* MODERN keyboard on foot: WASD as the left stick, the mouse pointer (from
@@ -735,6 +1019,13 @@ void gta2_keys_apply(void)
 int gta2_kbm_sticks(float *lx, float *ly, float *rx, float *ry)
 {
     *lx = *ly = *rx = *ry = 0;
+    if (kmod_active()) {   /* KEYBOARD CUSTOM: MOVE as the left stick (walk where it points), no aiming stick */
+        uint8_t kb[256];
+        wr_keys_keyboard_dik(kb);
+        *lx = (float)(kdown(kb, KM_RIGHT) - kdown(kb, KM_LEFT));
+        *ly = (float)(kdown(kb, KM_DOWN) - kdown(kb, KM_UP));
+        return 1;
+    }
     if (!kbm_active())
         return 0;
     int n = 0;
@@ -875,28 +1166,34 @@ void gta2_overview_value(int i, char *out, size_t cap)
     if (gta2_overview_is_head(i) || i < 0 || i >= gta2_overview_count())
         return;
     const ov_row *r = &k_ov[i];
-    int ps = opt_get(OPT_CONTROL_SCHEME), ks = opt_get(OPT_KEY_SCHEME);
+    int ks = opt_get(OPT_KEY_SCHEME);
     char pad[96], key[96];
     if (is_cam_act(r->act)) {   /* the camera: from the bindings */
         cam_row(r->act, pad, sizeof pad, key, sizeof key);
         snprintf(out, cap, "%s   |   %s", pad, key);
         return;
     }
-    if (ps == 2 && r->act >= 0 && bind_of_act(r->act) >= 0)
+    if (SCHEME_IS(SCHEME_CUSTOM) && r->act >= 0 && bind_of_act(r->act) >= 0)
         gta2_bind_value(0, bind_of_act(r->act), pad, sizeof pad);
-    else if (ps == 2 && r->act == -6)
+    else if (SCHEME_IS(SCHEME_CUSTOM) && r->act == -6)
         snprintf(pad, sizeof pad, "%s %s", g_bind[14] >= 0 ? wr_pad_control_name(g_bind[14]) : "-",
                  g_bind[13] >= 0 ? wr_pad_control_name(g_bind[13]) : "-");
-    else if (ps == 1 && r->ms) {   /* MODERN: the button its function is on */
+    else if (SCHEME_MODERNISH() && r->ms) {   /* MODERN: the button its function is on */
         int b = modern_fn_button(r->ms - 1);
         snprintf(pad, sizeof pad, "%s", b >= 0 ? wr_pad_control_name(b) : "-");
-    } else if (ps == 1)
+    } else if (SCHEME_MODERNISH())
         snprintf(pad, sizeof pad, "%s", r->modern);
     else
         snprintf(pad, sizeof pad, "%s", r->classic);
     if (ks == 2)
         snprintf(key, sizeof key, "%s", r->kbm);
-    else if (ks == 1)
+    else if (ks == KEY_SCHEME_CUSTOM && r->ms) {   /* KEYBOARD CUSTOM: the key its function is on */
+        kbind_load();
+        if (g_kbind[r->ms - 1])
+            wr_key_name(g_kbind[r->ms - 1], key, sizeof key);
+        else
+            snprintf(key, sizeof key, "-");
+    } else if (ks == 1)
         to_pad_keys(pad, key, sizeof key);
     else if (r->act >= 0)
         wr_key_name(key_of(r->act), key, sizeof key);
@@ -918,6 +1215,7 @@ static const char *act_name(int a, int driving)
     case ACT_DOWN: return driving ? "BRAKE" : "BACK";
     case ACT_LEFT: case ACT_RIGHT: return driving ? "STEER" : "TURN";
     case ACT_ATTACK: return "ATTACK";
+    case ACT_PUNCH: return "PUNCH";
     case ACT_ENTER: return driving ? "EXIT CAR" : "ENTER CAR";
     case ACT_JUMP: return driving ? "HANDBRAKE" : "JUMP";
     case ACT_PREV: return "PREV WEAPON";
@@ -937,16 +1235,15 @@ static const char *act_name(int a, int driving)
 
 static int control_act(int c, int driving)
 {
-    int sc = opt_get(OPT_CONTROL_SCHEME);
     if (opt_get(OPT_SPRINT) && !driving) {   /* SPRINT's button (gta2_sprint_pressed) */
         bind_load();
-        int sp = sc == 1 ? modern_fn_button(MF_SPRINT) : sc == 2 ? g_bind[BIND_SPRINT] : WR_PAD_LSTICK;
+        int sp = SCHEME_MODERNISH() ? modern_fn_button(MF_SPRINT) : SCHEME_IS(SCHEME_CUSTOM) ? g_bind[BIND_SPRINT] : WR_PAD_LSTICK;
         if (c == sp)
             return ACT_SPRINT;
     }
-    if (sc == 1)
+    if (SCHEME_MODERNISH())
         return modern_act(c, driving);
-    if (sc == 2) {
+    if (SCHEME_IS(SCHEME_CUSTOM)) {
         bind_load();
         for (int i = 0; i < GTA2_BIND_N; i++)
             if (g_bind[i] == c && i != BIND_SPRINT)
@@ -969,15 +1266,15 @@ void gta2_pad_function(int id, int driving, char *out, size_t cap)
         out[0] = 0;
         return;
     }
-    int sc = opt_get(OPT_CONTROL_SCHEME), c = k[id].ctl;
+    int c = k[id].ctl;
     const char *f = NULL;
     if (c == -1 || c == -2) {   /* the left stick, the d-pad */
-        if (sc == 1)
+        if (SCHEME_MODERNISH())
             f = driving ? "STEER" : "WALK";
         else
             f = driving ? "DRIVE" : "MOVE";
     } else if (c == -3) {   /* the right stick */
-        if (sc == 1)
+        if (SCHEME_MODERNISH())
             f = driving ? "RADIO" : "AIM";
         else
             f = driving ? "RADIO" : NULL;

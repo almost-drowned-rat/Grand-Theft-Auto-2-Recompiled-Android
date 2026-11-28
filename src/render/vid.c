@@ -159,13 +159,18 @@ void gfx_flip(void)
         wr_vk_target_end();
         g_gfx.in_target = 0;
     }
-    /* WR_DUMP_FRAMES=N: every N-th frame's game picture to data/frame_<n>.png */
+    /* WR_DUMP_FRAMES=N: every N-th frame's game picture to data/frame_<n>.png - when the count CROSSES a
+     * multiple of N: it also counts movie frames and interpolated flips, which never pass through here, so
+     * "frames % N == 0" could miss every multiple for a whole run (no dumps at all) */
     static int dump_every = -1;
+    static uint64_t dump_next;
     if (dump_every < 0) {
         const char *d = getenv("WR_DUMP_FRAMES");
         dump_every = d && *d ? atoi(d) : 0;
+        dump_next = dump_every > 0 ? (uint64_t)dump_every : 0;
     }
-    if (dump_every > 0 && g_gfx.frames % (uint64_t)dump_every == 0) {
+    if (dump_every > 0 && g_gfx.frames >= dump_next) {
+        dump_next = (g_gfx.frames / (uint64_t)dump_every + 1) * (uint64_t)dump_every;
         char path[1300];
         snprintf(path, sizeof path, "%s/frame_%06llu.png", g_wr_paths.data, (unsigned long long)g_gfx.frames);
         wr_vk_dump_target(g_gfx.target, path);

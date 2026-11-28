@@ -40,6 +40,9 @@ void w32_exit(uint32_t code);
 /* gta2.exe of the Rockstar freeware release (build 2004-04-27) */
 static const char k_sha1[] = "646e1d479fa2aea12b3ff448fa23f6362f9e012f";
 
+/* the shader-pack thread's messages into gta2.log (they went to stderr only; issue #4) */
+static void shader_pack_log(const char *line) { wr_log("%s", line); }
+
 int main(int argc, char **argv)
 {
     char root[1024];
@@ -134,6 +137,7 @@ int main(int argc, char **argv)
         SDL_CreateDirectory(ms);
         snprintf(ds, sizeof ds, "%s/shaders", g_wr_paths.data);
         shader_pack_show_bezels(1);   /* as the N64 recomps: bezel / border listed too */
+        shader_pack_set_log(shader_pack_log);
         shader_pack_start(ms, ds);
     }
     gta2_manual_register();

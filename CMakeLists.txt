@@ -54,6 +54,7 @@ set(GTA2_PORT_SOURCES
     src/gta2_options.c
     src/gta2_menu.c
     src/gta2_state.c
+    src/gta2_feel.c
     src/gta2_gameplay.c
     src/gta2_shaders.c
     src/gta2_padview.c
@@ -64,6 +65,8 @@ set(GTA2_PORT_SOURCES
     src/gta2_text.c
     src/gta2_radar.c
     src/gta2_radar_map.c
+    src/gta2_daynight.c
+    src/gta2_saveany.c
     src/render/vid.c
     src/render/gbh.c
     src/render/bink_buffer.c

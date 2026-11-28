@@ -21,5 +21,9 @@ void gta2_traffic_tick(void);            /* once per game tick */
 
 /* CAMERA DISTANCE (issue #2): the game's target zoom constants scaled, docs/re/camera_distance.md */
 void gta2_camera_distance_apply(void);   /* every frame (cheap): writes only on a change */
+/* FIXED CAMERA (issue #6): no speed zoom, no lead, one fixed height (gta2_gameplay.c) */
+int  gta2_fixed_camera_on(void);
+int  gta2_is_player_camera(uint32_t cam);
+void gta2_fixed_camera_apply(void);      /* every frame */
 
 #endif
